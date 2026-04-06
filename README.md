@@ -132,13 +132,12 @@ Essa organização facilita leitura rápida dos dados nos notebooks e padroniza 
 
 ## Dataset utilizado
 
-O dataset de referência utilizado neste projeto é o **DigiFakeAV**:
+O dataset de referência utilizado neste projeto é o **DigiFakeAV e Deepfake-Eval-2024:**
 
 Para mais informações sobre o mesmo, acessar o seu repositório:
 
 - Hugging Face:[ DigiFakeAV](https://huggingface.co/datasets/cambrain/DigiFakeAV)
-
-No fluxo atual, os dados do DigiFakeAV são organizados em `data/raw/` e depois processados para `data/extracted/`.
+- Hugging Face: [Deepfake-Eval-2024](https://huggingface.co/datasets/nuriachandra/Deepfake-Eval-2024/tree/main)
 
 ## Como navegar (primeiro acesso)
 

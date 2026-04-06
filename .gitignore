@@ -1,6 +1,7 @@
 data/extracted/fake_fvfa/*
 data/extracted/fake_fvra/*
 data/extracted/real/*
+data/videos/*
 data/extracted/face_landmarker.task
 data/raw/*
 
