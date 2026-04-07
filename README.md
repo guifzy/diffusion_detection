@@ -28,8 +28,8 @@ A metodologia está dividida em dois eixos complementares:
 
 Captura microestruturas e variações locais de padrão visual.
 
-- **LBP**: descreve textura local e uniformidade de padrões.
-- **Sobel**: enfatiza gradientes e bordas, útil para transições artificiais.
+- **LBP**: descreve textura local, variação espacial e inconsistência entre regiões.
+- **Sobel**: enfatiza gradientes e bordas, útil para transições artificiais e incoerência direcional.
 - **Laplacian**: destaca componentes de alta frequência e nitidez.
 - **Entropia global**: mede complexidade/dispersão de informação no frame.
 
