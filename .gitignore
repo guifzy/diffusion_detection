@@ -5,5 +5,10 @@ data/videos/*
 data/extracted/face_landmarker.task
 data/raw/*
 
+output/laplacian/*
+output/lbp/*
+output/sobel/*
+
 .venv/
 models/
+experimentos/grupo_a/__pycache__/experimentos_a.cpython-312.pyc

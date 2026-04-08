@@ -6,6 +6,7 @@ from matplotlib import animation
 from IPython.display import HTML, display
 from itertools import combinations
 from pathlib import Path
+from typing import Callable, cast
 
 from scipy.spatial.distance import cosine
 from skimage.feature import local_binary_pattern
@@ -31,11 +32,16 @@ def load_video_frames(video_path):
 def draw_text_block(img, texts, x=10, y=20):
     overlay = img.copy()
 
-    h = 20 * len(texts) + 10
-    w = 350
+    scale = max(0.45, min(0.75, img.shape[1] / 900.0))
+    thickness = 1 if img.shape[1] < 900 else 2
+    line_h = int(22 * scale) + 8
 
-    # retângulo escuro
-    cv2.rectangle(overlay, (x-5, y-20), (x+w, y+h), (0,0,0), -1)
+    text_sizes = [cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)[0] for text in texts]
+    max_text_w = max((size[0] for size in text_sizes), default=220)
+    w = min(max_text_w + 24, img.shape[1] - x - 10)
+    h = line_h * len(texts) + 10
+
+    cv2.rectangle(overlay, (x - 5, y - 20), (x + w, y + h), (0, 0, 0), -1)
 
     # transparência
     alpha = 0.6
@@ -46,11 +52,11 @@ def draw_text_block(img, texts, x=10, y=20):
         cv2.putText(
             img,
             text,
-            (x, y + i*20),
+            (x, y + i * line_h),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (255,255,255),
-            1,
+            scale,
+            (255, 255, 255),
+            thickness,
             cv2.LINE_AA
         )
 
@@ -170,29 +176,9 @@ def compute_lbp_metrics_video(sample):
     return compute_family_video_report(sample, "lbp")
 
 
-def summarize_group_a_results(results):
-    label_groups = {}
-
-    for result in results:
-        label_groups.setdefault(result["label"], []).append(result)
-
-    summary = {}
-
-    for label, label_results in label_groups.items():
-        summary[label] = {
-            "count": len(label_results),
-            "lbp_score_median": float(np.median([result["family_scores"]["lbp"] for result in label_results])),
-            "sobel_score_median": float(np.median([result["family_scores"]["sobel"] for result in label_results])),
-            "laplacian_score_median": float(np.median([result["family_scores"]["laplacian"] for result in label_results])),
-            "global_score_median": float(np.median([result["global_score"] for result in label_results])),
-        }
-
-    return summary
-
 ## Player
-def play_video_lbp_image(sample, interval=40, show_players=True, max_frames=120):
+def play_video_lbp_image(sample, interval=40, show_players=True):
     frames = load_video_frames(sample)
-    _ = max_frames
 
     if len(frames) == 0:
         raise ValueError("Nao ha frames para exibir.")
@@ -347,25 +333,7 @@ def laplacian_region_consistency(region_hists):
 
 
 def laplacian_score_frame(metrics):
-    basic = (
-        metrics.get("full_frame_lap_var", 0)
-        + metrics.get("full_frame_lap_mean_abs", 0)
-        + metrics.get("full_frame_lap_p90", 0)
-    )
-
-    spatial = (
-        metrics.get("lap_region_std", 0)
-        + metrics.get("lap_region_range", 0)
-        + metrics.get("full_frame_lap_spatial_mean_std", 0)
-        + metrics.get("full_frame_lap_spatial_std_std", 0)
-    )
-
-    consistency = (
-        metrics.get("lap_region_consistency_mean", 0) * 2
-        + metrics.get("lap_region_consistency_std", 0)
-    )
-
-    return 0.35 * basic + 0.35 * spatial + 0.30 * consistency
+    return float(score_laplacian_summary(metrics)["score"])
 
 
 def compute_laplacian_frame(frame):
@@ -501,6 +469,44 @@ def projection_features(mag, grid=3):
 
     return horizontal_var, vertical_var
 
+def sobel_artifact_features(mag, gray, bins=24):
+    p90 = float(np.percentile(mag, 90))
+    p99 = float(np.percentile(mag, 99))
+
+    # Perfect/artificial edges tend to over-populate the high-tail of gradient magnitude.
+    edge_tail_ratio = p99 / (p90 + 1e-6)
+
+    dark_threshold = float(np.percentile(gray, 25))
+    dark_mask = gray <= dark_threshold
+    shadow_edge_strength = float(np.mean(mag[dark_mask])) if np.any(dark_mask) else 0.0
+    global_edge_strength = float(np.mean(mag)) + 1e-6
+    shadow_edge_ratio = shadow_edge_strength / global_edge_strength
+
+    h, w = mag.shape
+    cy0, cy1 = h // 4, 3 * h // 4
+    cx0, cx1 = w // 4, 3 * w // 4
+    center = mag[cy0:cy1, cx0:cx1].ravel()
+
+    outer_mask = np.ones_like(mag, dtype=bool)
+    outer_mask[cy0:cy1, cx0:cx1] = False
+    background = mag[outer_mask].ravel()
+
+    c_hist, _ = np.histogram(center, bins=bins, range=(0, float(np.max(mag) + 1e-6)))
+    b_hist, _ = np.histogram(background, bins=bins, range=(0, float(np.max(mag) + 1e-6)))
+    c_hist = c_hist.astype(np.float64)
+    b_hist = b_hist.astype(np.float64)
+    c_hist /= c_hist.sum() + 1e-6
+    b_hist /= b_hist.sum() + 1e-6
+
+    # Repeated skin-like gradient patterns in background increase this similarity.
+    center_background_grad_sim = 1.0 - float(cosine(c_hist, b_hist))
+
+    return {
+        "edge_tail_ratio": edge_tail_ratio,
+        "shadow_edge_ratio": shadow_edge_ratio,
+        "center_background_grad_sim": center_background_grad_sim,
+    }
+
 def compute_sobel_image(gray):
     features = {}
 
@@ -532,6 +538,14 @@ def compute_sobel_image(gray):
 
     features["grad_horizontal_var"] = h_var
     features["grad_vertical_var"] = v_var
+
+    artifact_features = sobel_artifact_features(mag, gray)
+    features.update(artifact_features)
+    features["sobel_artifact_score"] = (
+        0.35 * artifact_features["edge_tail_ratio"]
+        + 0.35 * artifact_features["shadow_edge_ratio"]
+        + 0.30 * artifact_features["center_background_grad_sim"]
+    )
 
     return features, angle_hist, mag_color
 
@@ -588,33 +602,7 @@ def angular_consistency(region_angle_hists):
     }
 
 def sobel_score_frame(metrics):
-
-    # heterogeneidade entre regiões, mede a falta de coerência local, quanto mais heterogêneo, mais provável de ser fake
-    heterogeneity = (
-        metrics.get("sobel_region_std", 0) +
-        metrics.get("sobel_region_range", 0)
-    )
-
-    # assimetria direcional entre regiões, mede a falta de coerência local, quanto mais assimétrico, mais provável de ser fake
-    asymmetry = (
-        metrics.get("sobel_tb_coherence_diff", 0) +
-        metrics.get("sobel_lr_coherence_diff", 0)
-    )
-
-    # inconsistência angular entre regiões, mede a falta de coerência global, quanto mais inconsistente, mais provável de ser fake
-    angular = (
-        metrics.get("sobel_angle_consistency_mean", 0) * 2 +
-        metrics.get("sobel_angle_consistency_std", 0)
-    )
-
-    # score final ponderado
-    score = (
-        0.4 * heterogeneity +
-        0.3 * asymmetry +
-        0.3 * angular
-    )
-
-    return score
+    return float(score_sobel_summary(metrics)["score"])
 def compute_sobel_frame(frame):
 
     results = {}
@@ -663,7 +651,7 @@ def compute_sobel_frame(frame):
 def compute_sobel_scores(sample):
     return compute_family_video_report(sample, "sobel")
 ## Player
-def play_video_sobel_image(sample, interval=40, show_players=True, max_frames=500):
+def play_video_sobel_image(sample, interval=40, show_players=True):
     frames = load_video_frames(sample)
 
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -697,8 +685,6 @@ def play_video_sobel_image(sample, interval=40, show_players=True, max_frames=50
                 "[SPATIAL]",
                 f"Mean STD: {metrics['full_frame_grad_spatial_mean_std']:.3f}",
                 f"STD STD: {metrics['full_frame_grad_spatial_std_std']:.3f}",
-
-                "",
 
                 "[STRUCTURE]",
                 f"Horizontal-Var: {metrics['full_frame_grad_horizontal_var']:.3f}",
@@ -744,7 +730,7 @@ metadata_true = df[df['Video Ground Truth'] == "Real"]
 metadata_fake = df[df['Video Ground Truth'] == "Fake"]
 
 
-# Grupo A: agregacao e benchmark
+# Grupo A: scoring e exportacao por dataframe de metadados
 LBP_AGG_METRICS = [
     "full_entropy",
     "full_entropy_spatial_std",
@@ -758,10 +744,14 @@ SOBEL_AGG_METRICS = [
     "full_frame_grad_p90",
     "full_frame_grad_dir_entropy",
     "full_frame_grad_dir_coherence",
+    "full_frame_edge_tail_ratio",
+    "full_frame_shadow_edge_ratio",
+    "full_frame_center_background_grad_sim",
     "full_frame_grad_spatial_mean_std",
     "full_frame_grad_spatial_std_std",
     "sobel_region_std",
     "sobel_region_range",
+    "full_frame_sobel_artifact_score",
     "sobel_tb_coherence_diff",
     "sobel_lr_coherence_diff",
     "sobel_angle_consistency_mean",
@@ -806,6 +796,11 @@ def _inverse_log(value):
     return 1.0 / (1.0 + np.log1p(value))
 
 
+def _bounded_log_positive(value):
+    value = max(float(value), 0.0)
+    return 1.0 - np.exp(-np.log1p(value))
+
+
 def score_lbp_summary(summary):
     basic = (
         0.65 * _inverse_log(summary.get("full_entropy", 0.0))
@@ -836,10 +831,9 @@ def score_lbp_summary(summary):
 
 def score_sobel_summary(summary):
     basic = (
-        0.20 * _bounded_positive(summary.get("full_frame_grad_mean", 0.0))
-        + 0.25 * _bounded_positive(summary.get("full_frame_grad_std", 0.0))
-        + 0.30 * _bounded_positive(summary.get("full_frame_grad_p90", 0.0))
-        + 0.25 * _bounded_positive(summary.get("full_frame_grad_dir_entropy", 0.0))
+        0.30 * _bounded_positive(summary.get("full_frame_grad_std", 0.0))
+        + 0.35 * _bounded_positive(summary.get("full_frame_grad_p90", 0.0))
+        + 0.35 * _bounded_positive(summary.get("full_frame_grad_dir_entropy", 0.0))
     )
 
     spatial = (
@@ -857,7 +851,14 @@ def score_sobel_summary(summary):
         + 0.02 * _bounded_positive(summary.get("sobel_angle_consistency_std", 0.0))
     )
 
-    score = 0.25 * basic + 0.30 * spatial + 0.45 * coherence
+    artifact = (
+        0.20 * _bounded_positive(summary.get("full_frame_sobel_artifact_score", 0.0))
+        + 0.30 * _bounded_positive(summary.get("full_frame_edge_tail_ratio", 0.0))
+        + 0.30 * _bounded_positive(summary.get("full_frame_shadow_edge_ratio", 0.0))
+        + 0.20 * _bounded_positive(summary.get("full_frame_center_background_grad_sim", 0.0))
+    )
+
+    score = 0.20 * basic + 0.25 * spatial + 0.30 * coherence + 0.25 * artifact
 
     return {
         "score": float(score),
@@ -865,30 +866,35 @@ def score_sobel_summary(summary):
             "basic": float(basic),
             "spatial": float(spatial),
             "coherence": float(coherence),
+            "artifact": float(artifact),
         },
         "metric_contributions": {
-            "full_frame_grad_mean": float(_bounded_positive(summary.get("full_frame_grad_mean", 0.0))),
             "full_frame_grad_std": float(_bounded_positive(summary.get("full_frame_grad_std", 0.0))),
             "full_frame_grad_p90": float(_bounded_positive(summary.get("full_frame_grad_p90", 0.0))),
             "full_frame_grad_dir_entropy": float(_bounded_positive(summary.get("full_frame_grad_dir_entropy", 0.0))),
             "full_frame_grad_dir_coherence": float(_bounded_positive(summary.get("full_frame_grad_dir_coherence", 0.0))),
             "full_frame_grad_spatial_mean_std": float(_bounded_positive(summary.get("full_frame_grad_spatial_mean_std", 0.0))),
             "full_frame_grad_spatial_std_std": float(_bounded_positive(summary.get("full_frame_grad_spatial_std_std", 0.0))),
+            "full_frame_edge_tail_ratio": float(_bounded_positive(summary.get("full_frame_edge_tail_ratio", 0.0))),
+            "full_frame_shadow_edge_ratio": float(_bounded_positive(summary.get("full_frame_shadow_edge_ratio", 0.0))),
+            "full_frame_center_background_grad_sim": float(_bounded_positive(summary.get("full_frame_center_background_grad_sim", 0.0))),
             "sobel_region_std": float(_bounded_positive(summary.get("sobel_region_std", 0.0))),
             "sobel_region_range": float(_bounded_positive(summary.get("sobel_region_range", 0.0))),
             "sobel_tb_coherence_diff": float(_bounded_positive(summary.get("sobel_tb_coherence_diff", 0.0))),
             "sobel_lr_coherence_diff": float(_bounded_positive(summary.get("sobel_lr_coherence_diff", 0.0))),
             "sobel_angle_consistency_mean": float(_bounded_positive(summary.get("sobel_angle_consistency_mean", 0.0))),
             "sobel_angle_consistency_std": float(_bounded_positive(summary.get("sobel_angle_consistency_std", 0.0))),
+            "full_frame_sobel_artifact_score": float(_bounded_positive(summary.get("full_frame_sobel_artifact_score", 0.0))),
         },
     }
 
 
 def score_laplacian_summary(summary):
     basic = (
-        0.40 * _inverse_log(summary.get("full_frame_lap_var", 0.0))
-        + 0.35 * _inverse_log(summary.get("full_frame_lap_mean_abs", 0.0))
-        + 0.25 * _inverse_log(summary.get("full_frame_lap_p90", 0.0))
+        0.35 * _bounded_log_positive(summary.get("full_frame_lap_var", 0.0))
+        + 0.30 * _bounded_log_positive(summary.get("full_frame_lap_mean_abs", 0.0))
+        + 0.25 * _bounded_log_positive(summary.get("full_frame_lap_p90", 0.0))
+        + 0.10 * _bounded_positive(summary.get("full_frame_lap_entropy", 0.0))
     )
 
     spatial = (
@@ -913,9 +919,10 @@ def score_laplacian_summary(summary):
             "coherence": float(coherence),
         },
         "metric_contributions": {
-            "full_frame_lap_var": float(_inverse_log(summary.get("full_frame_lap_var", 0.0))),
-            "full_frame_lap_mean_abs": float(_inverse_log(summary.get("full_frame_lap_mean_abs", 0.0))),
-            "full_frame_lap_p90": float(_inverse_log(summary.get("full_frame_lap_p90", 0.0))),
+            "full_frame_lap_var": float(_bounded_log_positive(summary.get("full_frame_lap_var", 0.0))),
+            "full_frame_lap_mean_abs": float(_bounded_log_positive(summary.get("full_frame_lap_mean_abs", 0.0))),
+            "full_frame_lap_p90": float(_bounded_log_positive(summary.get("full_frame_lap_p90", 0.0))),
+            "full_frame_lap_entropy": float(_bounded_positive(summary.get("full_frame_lap_entropy", 0.0))),
             "full_frame_lap_spatial_mean_std": float(_bounded_positive(summary.get("full_frame_lap_spatial_mean_std", 0.0))),
             "full_frame_lap_spatial_std_std": float(_bounded_positive(summary.get("full_frame_lap_spatial_std_std", 0.0))),
             "lap_region_std": float(_bounded_positive(summary.get("lap_region_std", 0.0))),
@@ -931,18 +938,57 @@ FAMILY_PIPELINE_CONFIG = {
         "frame_fn": compute_lbp_frame,
         "agg_metrics": LBP_AGG_METRICS,
         "score_fn": score_lbp_summary,
+        "important_metrics": [
+            "full_entropy",
+            "full_entropy_spatial_std",
+            "lbp_region_distance_mean",
+            "lbp_region_distance_std",
+        ],
     },
     "sobel": {
         "frame_fn": compute_sobel_frame,
         "agg_metrics": SOBEL_AGG_METRICS,
         "score_fn": score_sobel_summary,
+        "important_metrics": [
+            "full_frame_grad_std",
+            "full_frame_grad_p90",
+            "full_frame_edge_tail_ratio",
+            "full_frame_shadow_edge_ratio",
+            "full_frame_sobel_artifact_score",
+            "full_frame_grad_dir_entropy",
+            "full_frame_center_background_grad_sim",
+        ],
     },
     "laplacian": {
         "frame_fn": compute_laplacian_frame,
         "agg_metrics": LAPLACIAN_AGG_METRICS,
         "score_fn": score_laplacian_summary,
+        "important_metrics": [
+            "full_frame_lap_var",
+            "full_frame_lap_p90",
+            "lap_region_std",
+            "lap_region_consistency_mean",
+        ],
     },
 }
+
+
+def collect_family_outputs(sample, frame_fn, include_previews=False):
+    frames = load_video_frames(sample)
+    frame_metrics = []
+    preview_frames = [] if include_previews else None
+
+    for frame in frames:
+        metrics, preview = frame_fn(frame)
+        frame_metrics.append(metrics)
+
+        if preview_frames is not None:
+            preview_frames.append(preview)
+
+    return {
+        "frame_metrics": frame_metrics,
+        "preview_frames": preview_frames,
+    }
 
 
 def compute_family_video_report(sample, family_name, include_previews=False):
@@ -961,189 +1007,169 @@ def compute_family_video_report(sample, family_name, include_previews=False):
     }
 
 
-def classify_group_a_video(family_scores):
-    suspicious_threshold = 0.60
-    coherent_threshold = 0.35
-    coherent_spread_threshold = 0.15
+def _safe_video_stem(filename):
+    stem = Path(str(filename)).stem
+    clean = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in stem)
+    return clean or "video"
 
-    score_values = np.array(list(family_scores.values()), dtype=float)
 
-    if len(score_values) == 0:
-        return "inconclusivo", []
+def _get_video_fps(video_path, default_fps=25.0):
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
 
-    suspicious_families = [
-        family_name
-        for family_name, score in family_scores.items()
-        if score >= suspicious_threshold
+    if fps is None or not np.isfinite(fps) or fps <= 0:
+        return float(default_fps)
+
+    return float(fps)
+
+
+def _video_writer_fourcc():
+    fourcc_fn = getattr(cv2, "VideoWriter_fourcc", None)
+    if callable(fourcc_fn):
+        typed_fourcc_fn = cast(Callable[..., int], fourcc_fn)
+        return typed_fourcc_fn(*"mp4v")
+
+    fallback_fourcc_fn = cast(Callable[..., int], cv2.VideoWriter.fourcc)
+    return fallback_fourcc_fn(*"mp4v")
+
+
+def _score_from_frame_metrics(family_name, frame_metrics):
+    score_fn = FAMILY_PIPELINE_CONFIG[family_name]["score_fn"]
+    return float(score_fn(frame_metrics)["score"])
+
+
+def _resize_frame_for_export(frame, family_name):
+    min_side_target = 512 if family_name in ("lbp", "laplacian") else 360
+    h, w = frame.shape[:2]
+    min_side = min(h, w)
+
+    if min_side >= min_side_target:
+        return frame
+
+    scale = float(min_side_target) / float(min_side)
+    new_w = int(round(w * scale))
+    new_h = int(round(h * scale))
+
+    return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
+
+def _build_overlay_lines(family_name, frame_metrics, label, filename, frame_idx):
+    important_keys = FAMILY_PIPELINE_CONFIG[family_name]["important_metrics"]
+    short_name = str(filename)
+    if len(short_name) > 42:
+        short_name = short_name[:39] + "..."
+
+    lines = [
+        f"Label: {label}",
+        f"Video: {short_name}",
+        f"Frame: {frame_idx}",
+        f"Family: {family_name.upper()}",
+        f"Score(frame): {_score_from_frame_metrics(family_name, frame_metrics):.4f}",
     ]
 
-    coherent_families = [
-        family_name
-        for family_name, score in family_scores.items()
-        if score <= coherent_threshold
-    ]
+    for key in important_keys:
+        lines.append(f"{key}: {frame_metrics.get(key, 0.0):.4f}")
 
-    spread = float(np.max(score_values) - np.min(score_values))
-    global_score = float(np.mean(score_values))
-
-    if len(suspicious_families) >= 2:
-        return "suspeito", suspicious_families
-
-    if (
-        len(coherent_families) == len(family_scores)
-        and spread <= coherent_spread_threshold
-        and global_score <= coherent_threshold
-    ):
-        return "coerente", []
-
-    return "inconclusivo", suspicious_families
+    return lines
 
 
-def collect_family_outputs(sample, frame_fn, include_previews=False):
-    frames = load_video_frames(sample)
+def _export_annotated_family_video(preview_frames, frame_metrics, family_name, label, filename, output_path, fps):
+    if preview_frames is None or len(preview_frames) == 0:
+        return False
 
-    return collect_family_outputs_from_frames(
-        frames,
-        frame_fn,
-        include_previews=include_previews,
+    if frame_metrics is None or len(frame_metrics) == 0:
+        return False
+
+    n_frames = min(len(preview_frames), len(frame_metrics))
+    if n_frames == 0:
+        return False
+
+    first = _resize_frame_for_export(preview_frames[0], family_name)
+    height, width = first.shape[:2]
+    writer = cv2.VideoWriter(
+        str(output_path),
+        _video_writer_fourcc(),
+        fps,
+        (width, height),
     )
 
+    for idx in range(n_frames):
+        frame = _resize_frame_for_export(preview_frames[idx], family_name)
+        metrics = frame_metrics[idx]
+        overlay_lines = _build_overlay_lines(family_name, metrics, label, filename, idx)
+        rendered = draw_text_block(frame.copy(), overlay_lines)
+        writer.write(rendered)
 
-def collect_family_outputs_from_frames(frames, frame_fn, include_previews=False):
-    if len(frames) == 0:
-        return {
-            "frame_metrics": [],
-            "preview_frames": [] if include_previews else None,
-        }
-
-    frame_metrics = []
-    preview_frames = [] if include_previews else None
-
-    for frame in frames:
-        metrics, preview = frame_fn(frame)
-        frame_metrics.append(metrics)
-
-        if preview_frames is not None:
-            preview_frames.append(preview)
-
-    return {
-        "frame_metrics": frame_metrics,
-        "preview_frames": preview_frames,
-    }
+    writer.release()
+    return True
 
 
-def collect_group_a_video(sample, include_previews=False):
-    frames = load_video_frames(sample)
+def _select_rows_from_metadata(metadata_df, n_real, n_fake):
+    real_rows = metadata_df[metadata_df["Video Ground Truth"] == "Real"].head(n_real)
+    fake_rows = metadata_df[metadata_df["Video Ground Truth"] == "Fake"].head(n_fake)
 
-    family_outputs = {}
+    selected = []
 
-    for family_name, config in FAMILY_PIPELINE_CONFIG.items():
-        outputs = collect_family_outputs_from_frames(
-            frames,
-            config["frame_fn"],
-            include_previews=include_previews,
-        )
-        family_outputs[family_name] = {
-            "summary": aggregate_metric_series(outputs["frame_metrics"], config["agg_metrics"]),
-            "frame_metrics": outputs["frame_metrics"],
-            "preview_frames": outputs["preview_frames"],
-        }
+    for _, row in real_rows.iterrows():
+        selected.append((row, "Real"))
 
-    return {"sample": sample, **family_outputs}
+    for _, row in fake_rows.iterrows():
+        selected.append((row, "Fake"))
+
+    return selected
 
 
-def score_group_a_record(record):
-    family_scores = {}
-    family_scored_outputs = {}
+def process_group_a_from_metadata(metadata_df, n_real=3, n_fake=3, output_dir="output"):
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
 
-    for family_name, config in FAMILY_PIPELINE_CONFIG.items():
-        scored = config["score_fn"](record[family_name]["summary"])
-        family_scores[family_name] = scored["score"]
-        family_scored_outputs[family_name] = {
-            "summary": record[family_name]["summary"],
-            "score": scored["score"],
-            "components": scored["components"],
-            "metric_contributions": scored["metric_contributions"],
-            "preview_frames": record[family_name].get("preview_frames"),
-        }
+    for family_name in FAMILY_PIPELINE_CONFIG.keys():
+        (output_root / family_name).mkdir(parents=True, exist_ok=True)
 
-    verdict, suspicious_families = classify_group_a_video(family_scores)
-    global_score = float(np.mean(list(family_scores.values()))) if len(family_scores) else 0.0
-
-    scored_record = {
-        "sample": record["sample"],
-        "verdict": verdict,
-        "suspicious_families": suspicious_families,
-        "global_score": global_score,
-        "family_scores": family_scores,
-    }
-
-    scored_record.update(family_scored_outputs)
-    return scored_record
-
-
-def _resolve_sample_rows(metadata, n_rows):
-    if n_rows is None:
-        return metadata
-
-    return metadata.head(n_rows)
-
-
-def _score_row_video(row, label, include_previews):
-    sample_path = row["video_path"]
-    filename = row.get("Filename")
-
-    if not Path(sample_path).exists():
-        return None, {"label": label, "filename": filename, "video_path": sample_path}
-
-    record = collect_group_a_video(sample_path, include_previews=include_previews)
-    scored_record = score_group_a_record(record)
-    scored_record.update({"label": label, "filename": filename})
-
-    return scored_record, None
-
-
-def _run_rows_benchmark(rows, label, include_previews):
     results = []
-    skipped = []
 
-    for _, row in rows.iterrows():
-        scored_record, skipped_record = _score_row_video(
-            row,
-            label=label,
-            include_previews=include_previews,
-        )
+    for row, label in _select_rows_from_metadata(metadata_df, n_real, n_fake):
+        sample_path = row["video_path"]
+        filename = row.get("Filename", Path(sample_path).name)
 
-        if skipped_record is not None:
-            skipped.append(skipped_record)
+        if not Path(sample_path).exists():
             continue
 
-        results.append(scored_record)
+        fps = _get_video_fps(sample_path)
+        family_scores = {}
+        output_videos = {}
 
-    return results, skipped
+        for family_name in FAMILY_PIPELINE_CONFIG.keys():
+            report = compute_family_video_report(sample_path, family_name, include_previews=True)
+            family_scores[family_name] = report["score"]
 
+            out_name = f"{label.lower()}_{_safe_video_stem(filename)}_{family_name}.mp4"
+            out_path = output_root / family_name / out_name
 
-def run_group_a_benchmark(metadata_true_df, metadata_fake_df, n_true=5, n_fake=5, max_frames=120, include_previews=False):
-    _ = max_frames
-    true_rows = _resolve_sample_rows(metadata_true_df, n_true)
-    fake_rows = _resolve_sample_rows(metadata_fake_df, n_fake)
+            exported = _export_annotated_family_video(
+                report["preview_frames"],
+                report["frame_metrics"],
+                family_name,
+                label,
+                filename,
+                out_path,
+                fps,
+            )
 
-    true_results, true_skipped = _run_rows_benchmark(
-        true_rows,
-        label="Real",
-        include_previews=include_previews,
-    )
-    fake_results, fake_skipped = _run_rows_benchmark(
-        fake_rows,
-        label="Fake",
-        include_previews=include_previews,
-    )
+            if exported:
+                output_videos[family_name] = str(out_path)
 
-    results = true_results + fake_results
-    skipped = true_skipped + fake_skipped
+        results.append(
+            {
+                "label": label,
+                "family_scores": family_scores,
+                "output_videos": output_videos,
+            }
+        )
 
     return {
         "results": results,
-        "summary": summarize_group_a_results(results),
-        "skipped": skipped,
+        "output_dir": str(output_root),
     }
+

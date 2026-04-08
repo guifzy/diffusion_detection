@@ -8,3 +8,6 @@ ipython>=8.0.0
 jupyter>=1.0.0
 seaborn>=0.12.0
 dlib>=19.24.0
+retina-face
+tf-keras
+torch
