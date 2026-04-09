@@ -10,5 +10,6 @@ output/lbp/*
 output/sobel/*
 
 .venv/
+.vscode/
 models/
 experimentos/grupo_a/__pycache__/experimentos_a.cpython-312.pyc

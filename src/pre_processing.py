@@ -1,5 +1,6 @@
 # Landmarks de face, contorno e fundo
 import os
+from typing import Any
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -171,6 +172,34 @@ def overlay_regions(frame, regions):
     alpha = 0.3
     return cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
 
+def sanitize_bbox_xyxy(frame, bbox, min_size=2):
+    h, w = frame.shape[:2]
+
+    x1, y1, x2, y2 = [int(v) for v in bbox]
+
+    x1 = max(0, min(x1, w - 1))
+    y1 = max(0, min(y1, h - 1))
+    x2 = max(0, min(x2, w))
+    y2 = max(0, min(y2, h))
+
+    if (x2 - x1) < min_size or (y2 - y1) < min_size:
+        return None
+
+    return [x1, y1, x2, y2]
+
+def create_csrt_tracker():
+    tracker_factory = getattr(cv2, "TrackerCSRT_create", None)
+    if callable(tracker_factory):
+        return tracker_factory()
+
+    legacy = getattr(cv2, "legacy", None)
+    if legacy is not None:
+        legacy_factory = getattr(legacy, "TrackerCSRT_create", None)
+        if callable(legacy_factory):
+            return legacy_factory()
+
+    return None
+
 # Visualiza o vídeo com as caixas e regiões sobrepostas
 def saving_metadata(video_path,  max_frames=2000):
     gpu = check_gpu()
@@ -193,7 +222,7 @@ def saving_metadata(video_path,  max_frames=2000):
     regions_list = []
     metadata = []
 
-    tracker = None
+    tracker: Any = None
     last_bbox = None
 
     DETECT_EVERY = 1
@@ -213,23 +242,37 @@ def saving_metadata(video_path,  max_frames=2000):
             if det is not None:
                 bbox_scaled = det["bbox"]
                 bbox_original = [int(x / scale) for x in bbox_scaled]
+                bbox_original = sanitize_bbox_xyxy(frame, bbox_original)
 
-                # inicializa tracker
-                tracker = cv2.TrackerCSRT_create()
-                tracker.init(frame, tuple(bbox_original))
+                if bbox_original is not None:
+                    # OpenCV tracker usa bbox como (x, y, w, h).
+                    x1, y1, x2, y2 = bbox_original
+                    tracker_bbox = (x1, y1, x2 - x1, y2 - y1)
+                    tracker = create_csrt_tracker()
+                    if tracker is not None:
+                        try:
+                            tracker.init(frame, tracker_bbox)
+                        except cv2.error:
+                            tracker = None
 
-                last_bbox = bbox_original
+                    if tracker is not None:
+                        last_bbox = bbox_original
 
         # faz o tracking nos frames intermediários
         else:
-            success, tracked_box = tracker.update(frame)
-
-            if success:
-                x, y, w, h = map(int, tracked_box)
-                bbox_original = [x, y, x + w, y + h]
-                last_bbox = bbox_original
-            else:
+            if tracker is None:
                 bbox_original = None
+            else:
+                success, tracked_box = tracker.update(frame)
+
+                if success:
+                    x, y, w, h = map(int, tracked_box)
+                    bbox_original = [x, y, x + w, y + h]
+                    bbox_original = sanitize_bbox_xyxy(frame, bbox_original)
+                    if bbox_original is not None:
+                        last_bbox = bbox_original
+                else:
+                    bbox_original = None
 
         # fallbacks caso detecção e tracking falhem
         if bbox_original is None:
@@ -247,6 +290,10 @@ def saving_metadata(video_path,  max_frames=2000):
                     cx - size, cy - size,
                     cx + size, cy + size
                 ]
+
+        bbox_original = sanitize_bbox_xyxy(frame, bbox_original)
+        if bbox_original is None:
+            continue
 
         # extraindo as regiões para visualização
         regions = create_face_regions(frame, bbox_original)
@@ -272,5 +319,10 @@ df['video_path'] = df['Filename'].apply(lambda x: "/home/guilherme_monteiro/proj
 
 #executando em todas as linhas do dataframe
 for idx, row in df.iterrows():
-    saving_metadata(row['video_path'])
+    # verifica se ja tem metadados salvos para esse vídeo
+    meta_path = row['video_path'].replace(".mp4", "_meta.json").replace("/videos/", "/metadata/")
+    if os.path.exists(meta_path):
+        print(f"Metadados já existem para {row['Filename']}, pulando...")
+    else:
+        saving_metadata(row['video_path'])
 
