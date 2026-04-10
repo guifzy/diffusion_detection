@@ -201,7 +201,7 @@ def create_csrt_tracker():
     return None
 
 # Visualiza o vídeo com as caixas e regiões sobrepostas
-def saving_metadata(video_path,  max_frames=2000):
+def saving_metadata(video_path,  max_frames=500):
     gpu = check_gpu()
     if gpu:
         print("Usando GPU para detecção")
