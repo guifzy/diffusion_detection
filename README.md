@@ -38,7 +38,6 @@ Captura microestruturas e variações locais de padrão visual.
 Foca na coerência geométrica e na organização espacial de detalhes.
 
 - **SIFT**: keypoints e descritores para estabilidade estrutural.
-- **Autocorrelação**: periodicidade e repetição de padrões espaciais.
 - **Patch similarity (self-similarity)**: redundância local que pode indicar síntese.
 
 #### Grupo C - ruído
@@ -58,6 +57,7 @@ Observa distribuição espectral e simetrias no domínio da frequência.
 - **Simetria horizontal/vertical**: padrões especulares no espectro.
 - **Anisotropia**: direção preferencial da energia espectral.
 - **Entropia da FFT**: complexidade espectral global.
+- **Autocorrelação**: periodicidade e repetição de padrões espaciais.
 
 #### Grupo E - física
 
@@ -105,30 +105,57 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 ```text
 .
 ├── data/
-│   ├── raw/                 # dados brutos
-│   └── extracted/           # dados processados, metadados e frames extraídos
+│   ├── extracted/           # metadados consolidados do dataset (ex.: metadata.json)
+│   ├── metadata/            # metadados por vídeo/região e CSV com links/labels
+│   └── videos/              # vídeos de entrada utilizados no processamento
 ├── experimentos/
 │   ├── grupo_a/             # notebooks e documentação do Grupo A (textura)
-│   └── grupo_b/             # notebooks e documentação do Grupo B (estrutura)
-├── models/                  # modelos treinados, checkpoints e artefatos
+│   ├── grupo_b/             # notebooks e documentação do Grupo B (estrutura)
+│   ├── grupo_c/             # notebooks e documentação do Grupo C
+│   └── pre_processamento/   # notebooks de pré-processamento
 ├── output_exemples/         # exemplos de saídas e resultados
 ├── src/
-│   └── create_metadata.py   # scripts utilitários para arquitetura do fluxo
+│   ├── create_metadata.py   # scripts utilitários para arquitetura do fluxo
+│   └── pre_processing.py    # pré-processamento e extração de regiões dos vídeos
 ├── requirements.txt         # dependências do projeto
 └── README.md                # este documento
 ```
 
+## Pré-processamento e extração de regiões
+
+O pipeline inclui o script `src/pre_processing.py` para preparar os vídeos e extrair regiões de interesse por frame:
+
+- **face**: região facial principal;
+- **contorno**: borda/periferia da face para análise de transições;
+- **fundo**: área não facial para comparação de padrões com o foreground.
+
+Essas regiões são usadas para análise espacial, espectral e temporal de forma separada e comparativa.
+
+## Metadados e organização dos arquivos
+
+Os metadados do projeto são organizados em dois formatos complementares:
+
+- **CSV**: tabela consolidada com campos como `label`, `nome` e `link` dos vídeos, facilitando filtragem, auditoria e integração com os experimentos.
+- **JSON**: metadados detalhados por vídeo e por região extraída (face, contorno e fundo), preservando estrutura hierárquica e atributos adicionais.
+
 ## Formato dos arquivos de vídeo
 
-Atualmente, o projeto trabalha com vídeos já convertidos para uma representação de frames e metadados auxiliares.
+Atualmente, o projeto utiliza vídeos em `data/videos/` e gera metadados auxiliares em `data/metadata/` e `data/extracted/`.
 
-- `*.frames.npy`: tensor com os frames do vídeo, normalmente em `uint8`, no formato `(num_frames, height, width, 3)`.
-- `*.num_frames.txt`: quantidade total de frames do vídeo.
-- `*.height.txt`: altura de cada frame.
-- `*.width.txt`: largura de cada frame.
-- `metadata.json`: índice com informações do dataset (id do vídeo, rótulo e caminhos para os arquivos acima).
+- `video-metadata-publish-with-links.csv`: tabela com `label`, `nome` e `link` dos vídeos.
+- `*_meta.json`: metadados por vídeo com informações da extração de regiões (face, contorno e fundo).
+- `metadata.json`: índice consolidado do dataset para consumo nos experimentos.
 
 Essa organização facilita leitura rápida dos dados nos notebooks e padroniza a extração de sinais espaciais, espectrais e temporais.
+
+## Resultados e métricas
+
+Os resultados são salvos em dois níveis:
+
+- **Frame level**: métricas por frame armazenadas em formato de **DataFrame** para análise fina ao longo do tempo.
+- **Video level (final)**: métricas agregadas com variação temporal do vídeo inteiro.
+
+As métricas finais de variação temporal em nível de vídeo são as utilizadas como referência principal para comparação entre métodos e tomada de decisão no ensemble.
 
 ## Dataset utilizado
 
@@ -142,9 +169,10 @@ Para mais informações sobre o mesmo, acessar o seu repositório:
 ## Como navegar (primeiro acesso)
 
 1. Comece por este `README.md` para entender os objetivos e os grupos metodológicos.
-2. Acesse `experimentos/`para consultar os notebooks de experimentação
+2. Acesse `experimentos/` para consultar os notebooks de experimentação.
 3. Verifique `data/extracted/metadata.json` para mapeamento dos dados processados.
-4. Use `src/create_metadata.py` para rotinas auxiliares de organização de metadados.
+4. Use `src/pre_processing.py` para pré-processamento e geração de metadados por região.
+5. Use `src/create_metadata.py` para rotinas auxiliares de organização/consolidação de metadados.
 
 ## Ambiente e execução
 
@@ -161,11 +189,11 @@ pip install -r requirements.txt
 
 ### Fluxo sugerido
 
-1. Preparar dados em `data/raw/`.
-2. Extrair/processar para `data/extracted/`.
-3. Processar/utilizar para `data/processed/`
+1. Organizar os vídeos de entrada em `data/videos/`.
+2. Executar o pré-processamento e a extração de regiões com `src/pre_processing.py`.
+3. Salvar metadados por vídeo/região em `data/metadata/` e consolidar índices em `data/extracted/`.
 4. Rodar experimentos por grupo em `experimentos/`.
-5. Consolidar métricas e comparar abordagens.
+5. Consolidar métricas frame-level e video-level para comparação entre abordagens.
 6. Evoluir para ensemble híbrido final.
 
 ## Status do projeto
