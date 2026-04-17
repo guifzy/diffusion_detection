@@ -1,146 +1,94 @@
-# (A) Densidade de estrutura
+# Grupo B - Estrutura (SIFT e Patch Similarity)
 
-### Número de keypoints (`num_keypoints`)
+## 1. Contexto forense
 
-**O que mede:**
+Este grupo analisa consistencia estrutural do conteudo facial, comparando face, contorno e fundo para encontrar sinais de sintese.
 
-* quantidade de estruturas detectáveis
+Em IA forense, videos gerados podem manter aparencia global convincente, mas falhar em estabilidade de pontos de interesse e consistencia dos descritores locais.
 
-**Interpretação:**
+## 2. Escopo atual do notebook
 
-* alto → imagem rica em detalhes estruturais
-* baixo → imagem “suavizada” ou artificial
+Implementacao atual em `testes_b.ipynb`:
 
-👉 Deepfake:
+- leitura do CSV de metadados e construcao de `video_path`;
+- carregamento de `*_meta.json` por video;
+- extracao das regioes face/contorno/fundo por frame;
+- calculo de metricas estruturais com SIFT;
+- bloco de Patch Similarity mantido para exploracao;
+- consolidacao por frame via `all_metrics(video_path, max_frames=500, label=None)`.
 
-* pode ter **menos keypoints** (suavização da pele)
-* ou **mais keypoints artificiais** (ruído estruturado)
+## 3. Metricas e motivacao
 
----
+### 3.1 SIFT (ativo no `all_metrics`)
 
-## (B) Qualidade dos pontos
+O que mede:
 
-### Response (força do keypoint)
+- densidade de keypoints na face (`sift_face_kp_density`);
+- entropia dos descritores (`sift_face_entropy`);
+- auto-similaridade media dos descritores (`sift_face_self_sim`);
+- diferencas inter-regionais (`face_bg`, `face_border`, `border_bg`) para densidade, entropia, presenca de keypoints e distancia de descritores.
 
-**O que mede:**
+Por que usar:
 
-* quão “forte” é um ponto de interesse
+- estruturas faciais reais tendem a manter distribuicao de keypoints mais natural;
+- videos sinteticos podem exibir repeticao ou instabilidade de descritores;
+- diferencas entre face e contexto ajudam a detectar composicao artificial.
 
-**Métricas úteis:**
+Contribuicao para IA forense:
 
-* média (`mean_response`)
-* variância (`std_response`)
+- evidencia inconsistencia estrutural que nao aparece apenas em textura;
+- adiciona robustez ao ensemble quando combinado com sinais de ruido e frequencia.
 
-**Interpretação:**
+### 3.2 Patch Similarity (exploratorio)
 
-* real → distribuição mais natural
-* deepfake → pode ter:
-  * muitos pontos fracos
-  * ou padrões artificiais consistentes
+O que mede:
 
----
+- similaridade media e desvio de similaridade entre patches locais.
 
-## (C) Escala (tamanho dos keypoints)
+Por que usar:
 
-### `mean_size`
+- modelos gerativos podem repetir padroes locais em excesso.
 
-**O que mede:**
+Contribuicao para IA forense:
 
-* escala das estruturas detectadas
+- potencial para detectar repeticao artificial de textura/estrutura;
+- no estado atual, ainda nao entra no DataFrame final de `all_metrics`.
 
-**Interpretação:**
+## 4. Estrutura do DataFrame por frame
 
-* real → mistura de escalas
-* deepfake → pode ter:
-  * uniformização
-  * perda de microdetalhes
+Colunas de identificacao:
 
----
+- `video_name`
+- `label` (opcional)
+- `frame`
 
-## (D) Variabilidade dos descritores
+Colunas SIFT diretas:
 
-### Variância dos descritores (`descriptor_variance`)
+- `sift_face_kp_density`
+- `sift_face_entropy`
+- `sift_face_self_sim`
 
-**O que mede:**
+Colunas SIFT por diferencas entre regioes (prefixos `face_bg`, `face_border`, `border_bg`):
 
-* diversidade dos padrões locais
+- `{prefix}_kp_density_diff`
+- `{prefix}_desc_entropy_diff`
+- `{prefix}_kp_presence_diff`
+- `{prefix}_desc_dist`
 
-**Interpretação:**
+## 5. Como este grupo contribui no ensemble forense
 
-* real → alta diversidade
-* deepfake → padrões repetitivos ou artificiais
+- adiciona uma camada de analise estrutural para complementar textura e ruido;
+- melhora interpretabilidade com comparacoes regionais objetivas;
+- fornece sinais frame-level prontos para agregacao temporal em nivel de video.
 
-👉 Muito importante para difusão:
+## 6. Limitacoes atuais
 
-* modelos gerativos tendem a repetir padrões
+- forte dependencia da deteccao facial e da qualidade dos metadados de bbox;
+- sensivel a blur/compressao, que reduzem keypoints utilmente discriminativos;
+- Patch Similarity ainda nao integrado ao fluxo final.
 
----
+## 7. Proximos passos
 
-## (E) Distribuição espacial (CRÍTICO)
-
-### dispersão dos keypoints (ex: std em X/Y)
-
-**O que mede:**
-
-* como os pontos estão distribuídos no rosto
-
-**Interpretação:**
-
-* real → distribuição coerente com anatomia
-* deepfake → concentração estranha (ex: boca/olhos)
-
----
-
-## (A) Variação do número de keypoints
-
-### Instabilidade estrutural
-
-**O que observar:**
-
-* flutuações grandes frame a frame
-
-**Interpretação:**
-
-* real → variação suave
-* deepfake → variação irregular
-
----
-
-## (B) Variação da resposta
-
-### instabilidade da força estrutural
-
-* mudanças abruptas indicam:
-  * artefatos
-  * inconsistência de textura
-
----
-
-## (C) Drift estrutural
-
-### mudança gradual nos padrões
-
-* descritores mudando sem motivo físico
-* indica geração frame a frame sem coerência
-
----
-
-## (D) Consistência de matching (muito forte)
-
-Se você compara frames consecutivos:
-
-quantos keypoints “se mantêm”?
-
-**Interpretação:**
-
-* real → alta correspondência
-* deepfake → baixa correspondência
-
----
-
-## (E) Distribuição espacial ao longo do tempo
-
-> os pontos continuam nas mesmas regiões do rosto?
-
-* real → sim (estrutura anatômica)
-* deepfake → não (instabilidade)
+- avaliar integracao de Patch Similarity no `all_metrics`;
+- criar agregacoes temporais por video para classificacao final;
+- combinar features do grupo B com A e C em um metamodelo forense.

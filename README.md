@@ -129,6 +129,8 @@ O pipeline inclui o script `src/pre_processing.py` para preparar os vídeos e ex
 - **contorno**: borda/periferia da face para análise de transições;
 - **fundo**: área não facial para comparação de padrões com o foreground.
 
+> Futuramente serão utilizadas regiões mais descriminativas como olhos, boca, cabelo, tecido...
+
 Essas regiões são usadas para análise espacial, espectral e temporal de forma separada e comparativa.
 
 ## Metadados e organização dos arquivos
@@ -155,7 +157,11 @@ Os resultados são salvos em dois níveis:
 - **Frame level**: métricas por frame armazenadas em formato de **DataFrame** para análise fina ao longo do tempo.
 - **Video level (final)**: métricas agregadas com variação temporal do vídeo inteiro.
 
-As métricas finais de variação temporal em nível de vídeo são as utilizadas como referência principal para comparação entre métodos e tomada de decisão no ensemble.
+As métricas finais de variação temporal em nível de vídeo são as utilizadas como referência principal para comparação entre métodos e tomada de decisão no ensemble. Elas serão em granularidades de méida, desvio padrão e delta. Sendo calculado a diferença entre regiões por vídeo.
+
+Utilização futura Multibranch CNN com Transformers temporal.
+
+Modelo que combina vetores latentes com sinais frame level para Transformers temporal também pode ser uma opção.
 
 ## Dataset utilizado
 
