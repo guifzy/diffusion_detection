@@ -112,6 +112,7 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 │   ├── grupo_a/             # notebooks e documentação do Grupo A (textura)
 │   ├── grupo_b/             # notebooks e documentação do Grupo B (estrutura)
 │   ├── grupo_c/             # notebooks e documentação do Grupo C
+│   ├── grupo_d/             # notebooks do Grupo D (frequência/FFT)
 │   └── pre_processamento/   # notebooks de pré-processamento
 ├── output_exemples/         # exemplos de saídas e resultados
 ├── src/
@@ -204,8 +205,36 @@ pip install -r requirements.txt
 
 ## Status do projeto
 
-Projeto em evolução incremental por grupos de sinais. A base atual prioriza:
+Projeto em evolução incremental, com base funcional de extração e análise por grupos.
 
-- organização dos experimentos em blocos metodológicos;
-- validação de sinais interpretáveis;
-- preparação para integração com modelos temporais e transfer learning.
+Estado atual observado no repositório:
+
+- **Estrutura de experimentos ativa**: 5 notebooks em `experimentos/` (grupos A, B, C, D e pré-processamento).
+- **Documentação técnica por grupo**:
+	- grupos A, B, C e D com `README.md` detalhando escopo, métricas e limitações;
+- **Pipeline de pré-processamento disponível**:
+	- script em `src/pre_processing.py` para detecção facial, extração de regiões (face/contorno/fundo) e geração de metadados por vídeo.
+- **Base de dados local populada**:
+	- `data/videos/` com 2042 arquivos;
+	- `data/metadata/` com 11 arquivos para teste `*_meta.json`;
+	- `data/extracted/metadata.json` consolidado.
+
+Principais pendências para as próximas etapas:
+
+- consolidar agregações **video-level** de forma padronizada entre todos os grupos;
+- integrar A/B/C/D em um fluxo único de ensemble com avaliação comparativa;
+- revisar `src/create_metadata.py`, que atualmente contém caminhos absolutos de ambiente Windows.
+
+## Referências
+
+- **Textura, frequência e inconsistência física**:
+	[Deepfake forensics: a survey of digital forensic methods for multimodal deepfake identification on social media](https://www.researchgate.net/publication/399736959_DeepFake_Detection_Through_Deep_Learning_A_Comprehensive_Review)
+
+- **Textura (LBP-like), sinais espaciais e features estatísticas**:
+	[Deepfake detection: Enhancing performance with spatiotemporal texture and deep learning feature fusion](https://www.sciencedirect.com/science/article/pii/S1110866524000987)
+
+- **FFT (domínio da frequência)**:
+	[M2TR: Multi-modal Multi-scale Transformers for Deepfake Detection](https://arxiv.org/abs/2104.09770)
+
+- **FFT (domínio de frequência) + integração multimodal**:
+	[Cross-modal deepfake detection: integrating textual and frequency domains](https://www.researchgate.net/publication/403705865_Cross-modal_deepfake_detection_integrating_textual_and_frequency_domains)
