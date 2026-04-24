@@ -238,3 +238,6 @@ Principais pendências para as próximas etapas:
 
 - **FFT (domínio de frequência) + integração multimodal**:
 	[Cross-modal deepfake detection: integrating textual and frequency domains](https://www.researchgate.net/publication/403705865_Cross-modal_deepfake_detection_integrating_textual_and_frequency_domains)
+
+- **Pesquisador forense com vdídeos e conteúdos de referência**:
+	[Willard S. Ribeiro, PhD](https://www.instagram.com/willardsribeiro.ia/)
