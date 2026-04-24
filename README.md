@@ -82,12 +82,7 @@ Testa estabilidade dos sinais sob perturbações controladas.
 #### Temporal
 
 - **CNN**: extração de padrões espaciais por frame.
-- **Long Short-Term Memory (LSTM)**: modelagem de dependências temporais e inconsistências ao longo do vídeo.
-
-#### Transfer Learning
-
-- **XceptionNet**: backbone eficiente para sinais de manipulação facial.
-- **VGG16**: baseline clássico para comparação de representações visuais.
+- **Arquitetura Transformers**: modelagem de dependências temporais e inconsistências ao longo do vídeo.
 
 ## Foco em detecção de sinais
 
