@@ -59,14 +59,14 @@ Observa distribuição espectral e simetrias no domínio da frequência.
 - **Entropia da FFT**: complexidade espectral global.
 - **Autocorrelação**: periodicidade e repetição de padrões espaciais.
 
-#### Grupo E - física
+#### Grupo E - física (planejado)
 
 Procura inconsistências com o comportamento óptico esperado no mundo real.
 
 - **Iluminação**: coerência de sombras e distribuição de luz facial.
 - **Reflexos oculares**: consistência de highlights e reflexões nos olhos.
 
-#### Grupo F - robustez
+#### Grupo F - robustez (planejado)
 
 Testa estabilidade dos sinais sob perturbações controladas.
 
@@ -153,11 +153,35 @@ Os resultados são salvos em dois níveis:
 - **Frame level**: métricas por frame armazenadas em formato de **DataFrame** para análise fina ao longo do tempo.
 - **Video level (final)**: métricas agregadas com variação temporal do vídeo inteiro.
 
-As métricas finais de variação temporal em nível de vídeo são as utilizadas como referência principal para comparação entre métodos e tomada de decisão no ensemble. Elas serão em granularidades de méida, desvio padrão e delta. Sendo calculado a diferença entre regiões por vídeo.
+As métricas finais de variação temporal em nível de vídeo são as utilizadas como referência principal para comparação entre métodos e tomada de decisão no ensemble. Elas serão em granularidades de média, desvio padrão e delta, calculando a diferença entre regiões por vídeo.
 
-Utilização futura Multibranch CNN com Transformers temporal.
+### Estrutura esperada de saída
 
-Modelo que combina vetores latentes com sinais frame level para Transformers temporal também pode ser uma opção.
+Cada grupo deve gerar DataFrames com a seguinte estrutura mínima:
+
+```python
+# Frame-level (salvar em CSV ou pickle)
+frame_results = pd.DataFrame({
+    'video_id': [...],
+    'frame': [...],
+    'region': [...],      # 'face', 'contorno', 'fundo'
+    'sinal_1': [...],
+    'sinal_2': [...],
+    ...
+})
+
+# Video-level (agregado)
+video_results = pd.DataFrame({
+    'video_id': [...],
+    'label': [...],       # real / fake
+    'sinal_1_mean': [...],
+    'sinal_1_std': [...],
+    'sinal_1_delta': [...],  # max - min
+    ...
+})
+```
+
+Utilização futura: Multibranch CNN com Transformers temporal para modelar sequências completas de vídeo.
 
 ## Dataset utilizado
 
@@ -170,69 +194,103 @@ Para mais informações sobre o mesmo, acessar o seu repositório:
 
 ## Como navegar (primeiro acesso)
 
-1. Comece por este `README.md` para entender os objetivos e os grupos metodológicos.
-2. Acesse `experimentos/` para consultar os notebooks de experimentação.
-3. Verifique `data/extracted/metadata.json` para mapeamento dos dados processados.
-4. Use `src/pre_processing.py` para pré-processamento e geração de metadados por região.
-5. Use `src/create_metadata.py` para rotinas auxiliares de organização/consolidação de metadados.
+1. **Entenda o projeto**: leia este `README.md` para compreender objetivos e grupos metodológicos
+2. **Explore os experimentos**: acesse `experimentos/` para consultar os notebooks por grupo
+3. **Verifique metadados**: inspecione `data/extracted/metadata.json` para mapeamento dos dados processados
+4. **Rode pré-processamento** (se necessário): use `src/pre_processing.py` para extrair regiões e gerar metadados
+5. **Consolidar metadados** (se necessário): use `src/create_metadata.py` para rotinas auxiliares
+
+**Para começar rapidamente:**
+
+```bash
+# 1. Instale dependências
+pip install -r requirements.txt
+
+# 2. Configure Playwright (se usar notebooks com exportação)
+python -m playwright install chromium
+
+# 3. Abra um notebook no Jupyter
+jupyter notebook experimentos/grupo_a/testes_a.ipynb
+```
 
 ## Ambiente e execução
 
 ### Requisitos
 
-- Python 3.10+ (recomendado)
-- Dependências em `requirements.txt`
+- Python 3.10+ (recomendado 3.11 ou superior)
+- pip ou conda
+- ~10GB espaço livre (para dataset + ambiente)
 
 ### Instalação
 
+**1. Clone o repositório e entre no diretório:**
+
 ```bash
-pip install -r requirements.txt
+cd projetos/tcc
 ```
 
-### Fluxo sugerido
+**2. Crie e ative um ambiente virtual:**
 
-1. Organizar os vídeos de entrada em `data/videos/`.
-2. Executar o pré-processamento e a extração de regiões com `src/pre_processing.py`.
-3. Salvar metadados por vídeo/região em `data/metadata/` e consolidar índices em `data/extracted/`.
-4. Rodar experimentos por grupo em `experimentos/`.
-5. Consolidar métricas frame-level e video-level para comparação entre abordagens.
-6. Evoluir para ensemble híbrido final.
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# ou
+.venv\Scripts\activate     # Windows
+```
+
+**3. Instale as dependências:**
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+python -m playwright install chromium
+```
+
+**4. (Opcional) Para exportar notebooks para PDF:**
+
+```bash
+# Linux/macOS
+python -m playwright install-deps chromium
+
+# macOS (via Homebrew)
+brew install chromium
+```
+
+### Fluxo sugerido de trabalho
+
+1. Organize vídeos de entrada em `data/videos/` (devem estar no formato esperado)
+2. Execute pré-processamento: `python src/pre_processing.py` (gera metadados e regiões)
+3. Revise metadados consolidados em `data/extracted/metadata.json`
+4. Execute notebooks de experimentos em `experimentos/` por grupo
+5. Colete frame-level e video-level metrics para análise comparativa
+6. Integre resultados em ensemble híbrido final
 
 ## Status do projeto
 
-Projeto em evolução incremental, com base funcional de extração e análise por grupos.
+Projeto em evolução incremental com base funcional para extração de sinais e análise comparativa.
 
-Estado atual observado no repositório:
+### Estado atual
 
-- **Estrutura de experimentos ativa**: 5 notebooks em `experimentos/` (grupos A, B, C, D e pré-processamento).
-- **Documentação técnica por grupo**:
-	- grupos A, B, C e D com `README.md` detalhando escopo, métricas e limitações;
-- **Pipeline de pré-processamento disponível**:
-	- script em `src/pre_processing.py` para detecção facial, extração de regiões (face/contorno/fundo) e geração de metadados por vídeo.
-- **Base de dados local populada**:
-	- `data/videos/` com 2042 arquivos;
-	- `data/metadata/` com 11 arquivos para teste `*_meta.json`;
-	- `data/extracted/metadata.json` consolidado.
+**Componentes implementados:**
 
-Principais pendências para as próximas etapas:
+- **Estrutura de experimentos ativa**: 5 notebooks em `experimentos/` (grupos A, B, C, D + pré-processamento)
+- **Pipeline de pré-processamento**: script `src/pre_processing.py` para detecção facial, extração de regiões (face/contorno/fundo) e geração de metadados
+- **Base de dados local**:
+  - `data/videos/`: 2.042 vídeos
+  - `data/metadata/`: 11 metadados de teste (`*_meta.json`) + CSV consolidado
+  - `data/extracted/metadata.json`: índice consolidado do dataset
+- **Documentação técnica**: cada grupo (A, B, C, D) possui `README.md` com escopo, métricas e limitações
 
-- consolidar agregações **video-level** de forma padronizada entre todos os grupos;
-- integrar A/B/C/D em um fluxo único de ensemble com avaliação comparativa;
-- revisar `src/create_metadata.py`, que atualmente contém caminhos absolutos de ambiente Windows.
 
 ## Referências
 
 - **Textura, frequência e inconsistência física**:
-	[Deepfake forensics: a survey of digital forensic methods for multimodal deepfake identification on social media](https://www.researchgate.net/publication/399736959_DeepFake_Detection_Through_Deep_Learning_A_Comprehensive_Review)
-
+  [Deepfake forensics: a survey of digital forensic methods for multimodal deepfake identification on social media](https://www.researchgate.net/publication/399736959_DeepFake_Detection_Through_Deep_Learning_A_Comprehensive_Review)
 - **Textura (LBP-like), sinais espaciais e features estatísticas**:
-	[Deepfake detection: Enhancing performance with spatiotemporal texture and deep learning feature fusion](https://www.sciencedirect.com/science/article/pii/S1110866524000987)
-
+  [Deepfake detection: Enhancing performance with spatiotemporal texture and deep learning feature fusion](https://www.sciencedirect.com/science/article/pii/S1110866524000987)
 - **FFT (domínio da frequência)**:
-	[M2TR: Multi-modal Multi-scale Transformers for Deepfake Detection](https://arxiv.org/abs/2104.09770)
-
+  [M2TR: Multi-modal Multi-scale Transformers for Deepfake Detection](https://arxiv.org/abs/2104.09770)
 - **FFT (domínio de frequência) + integração multimodal**:
-	[Cross-modal deepfake detection: integrating textual and frequency domains](https://www.researchgate.net/publication/403705865_Cross-modal_deepfake_detection_integrating_textual_and_frequency_domains)
-
+  [Cross-modal deepfake detection: integrating textual and frequency domains](https://www.researchgate.net/publication/403705865_Cross-modal_deepfake_detection_integrating_textual_and_frequency_domains)
 - **Pesquisador forense com vídeos e conteúdos de referência**:
-	[Willard S. Ribeiro, PhD](https://www.instagram.com/willardsribeiro.ia/)
+  [Willard S. Ribeiro, PhD](https://www.instagram.com/willardsribeiro.ia/)
