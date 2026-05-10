@@ -4,119 +4,216 @@
 
 Este grupo busca sinais de inconsistencias de textura em videos sinteticos, com foco em diferencas entre tres regioes do frame:
 
-- face (regiao principal de interesse);
-- contorno (transicao entre face e resto da imagem);
-- fundo (contexto nao facial).
+- face;
+- border, isto e, a transicao ao redor da face;
+- background, isto e, o contexto nao facial.
 
-Em IA forense, artefatos de geracao costumam aparecer como suavizacao excessiva, bordas incoerentes ou distribuicoes de alta frequencia pouco naturais.
+Em IA forense, artefatos de geracao costumam aparecer como suavizacao excessiva, bordas incoerentes, perda de microtextura ou distribuicoes de alta frequencia pouco naturais. A comparacao entre face, borda e fundo ajuda a detectar quando a face tem estatisticas visuais diferentes do contexto.
 
-## 2. Escopo atual do notebook
+## 2. Estado atual do notebook
 
 Implementacao atual em `testes_a.ipynb`:
 
 - leitura do CSV de metadados e construcao de `video_path`;
-- carregamento de `*_meta.json` por video;
-- extracao das regioes face/contorno/fundo por frame;
-- calculo das metricas de textura com LBP, Sobel e Laplacian;
-- consolidacao por frame via `all_metrics(video_path, max_frames=500, label=None)`.
+- filtragem dos videos que possuem `*_meta.json` disponivel;
+- amostragem robusta de frames com preservacao do indice real do frame;
+- mapeamento `frame_idx -> metadata_idx`, evitando usar bbox de outro frame quando ha `np.linspace`;
+- extracao das regioes `face`, `border` e `background` por mascara espacial;
+- calculo das metricas de textura com LBP;
+- calculo das metricas de borda e gradiente com Sobel;
+- calculo das metricas de alta frequencia com Laplacian;
+- diferencas absolutas entre pares de regioes;
+- agregacao frame-level para video-level;
+- relatorio discriminativo com AUC e Cohen's d.
 
-## 3. Metricas e motivacao
+## 3. Mudancas aplicadas
 
-### 3.1 LBP (Local Binary Patterns)
+As principais correcoes feitas no notebook foram:
 
-O que mede:
+- corrigido o desalinhamento entre frame amostrado e metadata;
+- adicionadas funcoes auxiliares para `sample_frame_indices`, `metadata_index_for_frame`, `scale_bbox` e `clip_bbox`;
+- corrigido o fluxo para LBP, Sobel e Laplacian receberem bbox original e escalarem internamente;
+- corrigida a colisao de nomes entre LBP, Sobel e Laplacian, adicionando prefixos claros (`lbp`, `sobel`, `lap`);
+- normalizada a entropia de LBP e Sobel para facilitar comparacao;
+- adicionada protecao para distancia cosseno de histogramas vazios;
+- Sobel passou a usar coerencia angular ponderada pela magnitude do gradiente;
+- Sobel ganhou metricas diretas de `std` e `p95` da magnitude;
+- Laplacian passou a preservar energia absoluta em vez de calcular energia apenas depois de normalizacao por desvio padrao;
+- Laplacian ganhou `variance`, `mean_abs`, `p95_abs` e `entropy_norm`;
+- adicionada protecao para `kurtosis` instavel quando a variancia e quase zero;
+- a ultima celula deixou de sobrescrever `df` com metricas de um unico video;
+- adicionada avaliacao `evaluate_group_a(max_frames=120)`.
 
-- padrao local de microtextura;
-- complexidade (entropia), uniformidade e esparsidade;
-- distancia de histograma entre regioes.
+## 4. Metricas retornadas
 
-Por que usar:
+### 4.1 LBP
 
-- geradores de video tendem a homogenizar pele e perder variacoes finas naturais;
-- diferencas entre face e fundo podem revelar blending artificial.
+Para cada regiao (`face`, `border`, `background`), o notebook retorna:
 
-Contribuicao para IA forense:
+- `entropy_norm`: entropia normalizada do histograma LBP;
+- `uniformity`: concentracao do histograma;
+- `sparsity`: proporcao de bins relevantes no histograma.
 
-- identifica textura facial artificialmente regular;
-- aumenta o poder de separacao entre real e fake quando combinado com metricas de gradiente.
+As colunas seguem o formato:
 
-### 3.2 Sobel
+```text
+lbp_{region}_{metric}
+```
 
-O que mede:
+As diferencas regionais seguem:
 
-- magnitude e orientacao de bordas;
-- entropia do gradiente e coerencia direcional;
-- diferencas de energia e coerencia entre regioes.
+```text
+{prefix}_lbp_{metric}_diff
+{prefix}_lbp_hist_dist
+```
 
-Por que usar:
+Pares usados:
 
-- composicao sintetica pode criar transicoes de borda pouco fisicas;
-- direcao de bordas em regioes faciais pode ficar instavel em deepfake.
+- `face_bg`;
+- `face_border`;
+- `border_bg`.
 
-Contribuicao para IA forense:
+### 4.2 Sobel
 
-- detecta incoerencia estrutural de contornos e transicoes;
-- complementa LBP ao focar em geometria local das bordas.
+Para cada regiao, o notebook retorna:
 
-### 3.3 Laplacian
+- `entropy_norm`: entropia angular normalizada;
+- `coherence`: coerencia direcional ponderada pela magnitude do gradiente;
+- `energy`: magnitude media do gradiente;
+- `std`: desvio padrao da magnitude;
+- `p95`: percentil 95 da magnitude.
 
-O que mede:
+As colunas seguem o formato:
 
-- resposta de alta frequencia (energia);
-- formato da distribuicao (kurtosis);
-- diferencas entre regioes em alta frequencia.
+```text
+sobel_{region}_{metric}
+```
 
-Por que usar:
+As diferencas regionais seguem:
 
-- modelos generativos podem suavizar ou exagerar detalhes finos;
-- alteracoes em alta frequencia sao comuns em videos sinteticos comprimidos.
+```text
+{prefix}_sobel_{metric}_diff
+{prefix}_sobel_hist_dist
+```
 
-Contribuicao para IA forense:
+### 4.3 Laplacian
 
-- capta assinatura de nitidez artificial e ruido estrutural;
-- fortalece a deteccao de artefatos que nao aparecem em metrica de baixa frequencia.
+Para cada regiao, o notebook retorna:
 
-## 4. Estrutura do DataFrame por frame
+- `energy`: energia media absoluta de alta frequencia;
+- `variance`: variancia da resposta Laplacian;
+- `mean_abs`: media do valor absoluto;
+- `p95_abs`: percentil 95 do valor absoluto;
+- `entropy_norm`: entropia normalizada do histograma da resposta padronizada;
+- `kurtosis`: curtose com protecao para variancia quase zero;
+- `sparsity`: proporcao de resposta padronizada acima de 1 desvio.
+
+As colunas seguem o formato:
+
+```text
+lap_{region}_{metric}
+```
+
+As diferencas regionais seguem:
+
+```text
+{prefix}_lap_{metric}_diff
+{prefix}_lap_hist_dist
+```
+
+## 5. Estrutura dos DataFrames
+
+### 5.1 Frame-level
+
+`all_metrics(video_path, max_frames=500, label=None)` retorna uma linha por frame amostrado.
 
 Colunas de identificacao:
 
-- `video_name`
-- `label` (opcional)
-- `frame`
+- `video_name`;
+- `label`, quando informado;
+- `frame`, indice real do frame no video;
+- `metadata_idx`, indice do metadado usado para a bbox.
 
-Principais colunas LBP:
+Colunas de sinais:
 
-- `lbp_face_entropy`, `lbp_face_uniformity`, `lbp_border_entropy`, `lbp_bg_entropy`
-- `face_bg_entropy_diff`, `face_bg_uniformity_diff`, `face_bg_sparsity_diff`, `face_bg_hist_dist`
-- `face_border_entropy_diff`, `face_border_uniformity_diff`, `face_border_sparsity_diff`, `face_border_hist_dist`
-- `border_bg_entropy_diff`, `border_bg_uniformity_diff`, `border_bg_sparsity_diff`, `border_bg_hist_dist`
+- `lbp_face_*`;
+- `lbp_border_*`;
+- `lbp_background_*`;
+- `face_bg_lbp_*`;
+- `face_border_lbp_*`;
+- `border_bg_lbp_*`;
+- `sobel_face_*`;
+- `sobel_border_*`;
+- `sobel_background_*`;
+- `face_bg_sobel_*`;
+- `face_border_sobel_*`;
+- `border_bg_sobel_*`;
+- `lap_face_*`;
+- `lap_border_*`;
+- `lap_background_*`;
+- `face_bg_lap_*`;
+- `face_border_lap_*`;
+- `border_bg_lap_*`.
 
-Principais colunas Sobel:
+### 5.2 Video-level
 
-- `sobel_face_entropy`, `sobel_face_coherence`
-- `face_bg_coherence_diff`, `face_bg_energy_diff`
-- `face_border_coherence_diff`, `face_border_energy_diff`
-- `border_bg_coherence_diff`, `border_bg_energy_diff`
+`evaluate_group_a(max_frames=120)` agrega os sinais por video e retorna:
 
-Principais colunas Laplacian:
+- `video_metrics`: uma linha por video avaliado;
+- `report`: ranking de metricas com:
+  - `metric`;
+  - `auc_fake`;
+  - `auc_abs`;
+  - `cohen_d_fake_minus_real`;
+  - `real_mean`;
+  - `fake_mean`.
 
-- `lap_face_energy`, `lap_face_kurtosis`
-- `face_bg_kurtosis_diff`, `face_border_kurtosis_diff`, `border_bg_kurtosis_diff`
+O `auc_fake` usa `Fake` como classe positiva. O `auc_abs` mostra a forca discriminativa independentemente da direcao do sinal.
 
-## 5. Como este grupo contribui no ensemble forense
+## 6. Checagem atual de coerencia
 
-- fornece sinais explicaveis de textura e borda por frame;
-- ajuda a priorizar evidencias em regioes faciais vs. contexto;
-- gera features que podem ser agregadas temporalmente para decisao final em nivel de video.
+Rodada verificada com `max_frames=120`:
 
-## 6. Limitacoes atuais
+- videos no CSV: `2042`;
+- videos com metadata disponivel para este grupo: `11`;
+- videos avaliados: `6 Fake` e `5 Real`;
+- `video_metrics`: `11 x 300`;
+- `report`: `99 x 6`;
+- principais metricas sem valores nulos.
 
-- dependente da qualidade do bbox facial nos metadados;
-- videos com forte compressao podem reduzir confiabilidade de alta frequencia;
-- ainda nao faz agregacao temporal final dentro do notebook (saida principal e frame-level).
+Top sinais observados na rodada:
 
-## 7. Proximos passos
+```text
+border_bg_sobel_std_diff_mean             auc_abs=0.9667  d=-1.4994
+border_bg_sobel_p95_diff_mean             auc_abs=0.8667  d=-1.2243
+face_bg_sobel_std_diff_mean               auc_abs=0.8333  d=-1.2142
+face_bg_lap_hist_dist_mean                auc_abs=0.8333  d=-1.1866
+face_bg_sobel_entropy_norm_diff_mean      auc_abs=0.8333  d=-1.1835
+border_bg_lap_hist_dist_mean              auc_abs=0.8333  d=-1.1778
+face_border_lbp_hist_dist_mean            auc_abs=0.8333  d=-1.0514
+```
 
-- agregar features em nivel de video com estatisticas temporais;
-- calibrar thresholds por tipo de conteudo e compressao;
-- integrar com grupos B/C para classificacao forense multimodal.
+Interpretacao:
+
+- Os melhores sinais estao concentrados em diferencas regionais, especialmente `border_bg` e `face_bg`.
+- Sobel aparece como o sinal mais forte nesta amostra, indicando que diferencas de magnitude/variacao de borda entre regioes sao relevantes.
+- Laplacian e LBP tambem trazem sinais coerentes, principalmente distancias de histograma entre regioes.
+- O Grupo A e forte nesta amostra, mas ainda deve ser validado em mais videos antes de ser tratado como desempenho final.
+
+## 7. Limitacoes
+
+- A avaliacao atual usa apenas os videos que possuem `*_meta.json` compativel: `11` videos no total.
+- AUC alto em amostra pequena nao deve ser interpretado como resultado final.
+- LBP, Sobel e Laplacian sao sensiveis a compressao, blur, resolucao, iluminacao e qualidade da bbox.
+- Diferencas muito fortes em `border_bg` podem refletir enquadramento e fundo, entao devem ser combinadas com sinais de face e outros grupos.
+- A proxima etapa recomendada e gerar metadata para mais videos e testar estabilidade dos sinais por codec, resolucao e tipo de conteudo.
+
+## 8. Contribuicao no ensemble forense
+
+O Grupo A adiciona sinais explicaveis de textura, borda e alta frequencia:
+
+- captura microtextura por LBP;
+- mede coerencia e energia de bordas por Sobel;
+- mede detalhe fino e nitidez por Laplacian;
+- compara face, borda e fundo para detectar incoerencia regional;
+- fornece features frame-level e video-level para agregacao temporal ou metamodelo final.

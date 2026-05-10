@@ -48,6 +48,7 @@ def load_video_frames(video_path, max_frames=None):
             break
 
     cap.release()
+    print(f"Frames carregados: {len(frames)}")
 
     return np.array(frames)
 
@@ -314,8 +315,8 @@ def saving_metadata(video_path,  max_frames=500):
     save_metadata(metadata, video_path)
     print("Metadados salvos")
 
-df = pd.read_csv("/home/guilherme_monteiro/projetos/tcc/data/metadata/video-metadata-publish-with-links.csv")
-df['video_path'] = df['Filename'].apply(lambda x: "/home/guilherme_monteiro/projetos/tcc/data/videos/" + x)
+df = pd.read_csv("data/metadata/video-metadata-publish-with-links.csv")
+df['video_path'] = df['Filename'].apply(lambda x: "data/videos/" + x)
 
 #executando em todas as linhas do dataframe
 for idx, row in df.iterrows():
