@@ -59,12 +59,13 @@ Observa distribuição espectral e simetrias no domínio da frequência.
 - **Entropia da FFT**: complexidade espectral global.
 - **Autocorrelação**: periodicidade e repetição de padrões espaciais.
 
-#### Grupo E - física (planejado)
+#### Grupo E - física
 
 Procura inconsistências com o comportamento óptico esperado no mundo real.
 
-- **Iluminação**: coerência de sombras e distribuição de luz facial.
-- **Reflexos oculares**: consistência de highlights e reflexões nos olhos.
+- **Iluminação**: coerência de sombras, contraste, saturação e distribuição de luz entre face, contorno e fundo.
+- **Assimetria facial de luminância**: diferenças esquerda/direita, topo/base e quadrantes da face.
+- **Reflexos oculares**: consistência de highlights e reflexões nos olhos (planejado; depende de landmarks).
 
 #### Grupo F - robustez (planejado)
 
@@ -108,6 +109,7 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 │   ├── grupo_b/             # notebooks e documentação do Grupo B (estrutura)
 │   ├── grupo_c/             # notebooks e documentação do Grupo C
 │   ├── grupo_d/             # notebooks do Grupo D (frequência/FFT)
+│   ├── grupo_e/             # notebooks e documentação do Grupo E (física/iluminação)
 │   └── pre_processamento/   # notebooks de pré-processamento
 ├── output_exemples/         # exemplos de saídas e resultados
 ├── src/
