@@ -162,13 +162,24 @@ Colunas de sinais:
 - `video_metrics`: uma linha por video avaliado;
 - `report`: ranking de metricas com:
   - `metric`;
+  - `scope`;
+  - `context_sensitive`;
+  - `direction`;
   - `auc_fake`;
   - `auc_abs`;
+  - `auc_abs_ci_low`;
+  - `auc_abs_ci_high`;
+  - `auc_abs_bootstrap_std`;
   - `cohen_d_fake_minus_real`;
+  - `n_fake`;
+  - `n_real`;
+  - `missing_rate`;
   - `real_mean`;
   - `fake_mean`.
 
 O `auc_fake` usa `Fake` como classe positiva. O `auc_abs` mostra a forca discriminativa independentemente da direcao do sinal.
+
+Atualizacao metodologica: o relatorio agora tambem registra a direcao do sinal (`higher_fake` ou `higher_real`), o escopo regional da metrica e uma flag `context_sensitive` para sinais que usam fundo ou diferencas com fundo. O intervalo `auc_abs_ci_low`/`auc_abs_ci_high` e estimado por bootstrap por classe e serve como alerta de estabilidade em amostra pequena, nao como validacao final.
 
 ## 6. Checagem atual de coerencia
 
@@ -178,7 +189,7 @@ Rodada verificada com `max_frames=120`:
 - videos com metadata disponivel para este grupo: `11`;
 - videos avaliados: `6 Fake` e `5 Real`;
 - `video_metrics`: `11 x 300`;
-- `report`: `99 x 6`;
+- `report`: `99 x 15`;
 - principais metricas sem valores nulos.
 
 Top sinais observados na rodada:

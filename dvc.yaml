@@ -1,0 +1,66 @@
+stages:
+  ingest_bronze:
+    cmd: >-
+      python -m src.data_engineering.pipeline ingest
+      --catalog ${pipeline.catalog}
+      --videos-dir ${pipeline.videos_dir}
+      --url-column "${pipeline.url_column}"
+      --label-column "${pipeline.label_column}"
+    deps:
+      - src
+      - ${pipeline.catalog}
+    outs:
+      - data/bronze/manifests/bronze_manifest.csv
+      - ${pipeline.videos_dir}:
+          persist: true
+
+  build_silver_metadata:
+    cmd: >-
+      python -m src.data_engineering.pipeline preprocess
+      --catalog ${pipeline.catalog}
+      --videos-dir ${pipeline.videos_dir}
+      --metadata-dir ${pipeline.metadata_dir}
+      --detect-every ${pipeline.detect_every}
+    deps:
+      - src
+      - ${pipeline.catalog}
+      - ${pipeline.videos_dir}
+    outs:
+      - ${pipeline.metadata_dir}:
+          persist: true
+      - data/silver/face_metadata:
+          persist: true
+
+  build_gold_dataset:
+    cmd: >-
+      python -m src.data_engineering.pipeline gold
+      --catalog ${pipeline.catalog}
+      --videos-dir ${pipeline.videos_dir}
+      --metadata-dir ${pipeline.metadata_dir}
+      --groups ${pipeline.groups}
+      --generate-missing-metadata
+    deps:
+      - src
+      - ${pipeline.catalog}
+      - ${pipeline.videos_dir}
+      - ${pipeline.metadata_dir}
+    outs:
+      - data/silver/frame_features:
+          persist: true
+      - data/silver/video_features:
+          persist: true
+      - data/gold/gold_training_dataset.parquet:
+          persist: true
+
+  validate_data_contracts:
+    cmd: python -m src.data_engineering.pipeline validate --report data/reports/pipeline_latest.json
+    deps:
+      - src
+      - data/bronze/manifests/bronze_manifest.csv
+      - data/silver/face_metadata
+      - data/silver/frame_features
+      - data/silver/video_features
+      - data/gold/gold_training_dataset.parquet
+    metrics:
+      - data/reports/pipeline_latest.json:
+          cache: false

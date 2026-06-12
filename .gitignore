@@ -1,9 +1,21 @@
-data/extracted/fake_fvfa/*
-data/extracted/fake_fvra/*
-data/extracted/real/*
-data/videos/*
-data/extracted/face_landmarker.task
-data/raw/*
+# Data lake: keep documentation/contracts/manifests versionable, ignore heavy artifacts.
+data/*
+!data/README.md
+!data/docs/
+!data/docs/**
+!data/bronze/
+data/bronze/*
+!data/bronze/manifests/
+data/bronze/manifests/*
+!data/bronze/manifests/.gitkeep
+!data/bronze/manifests/video-metadata-publish-with-links.csv
+!data/silver/
+data/silver/*
+!data/gold/
+data/gold/*
+!data/reports/
+data/reports/*
+!data/reports/.gitkeep
 
 output/laplacian/*
 output/lbp/*
@@ -11,5 +23,13 @@ output/sobel/*
 
 .venv/
 .vscode/
+.env
+.dvc/config.local
+__pycache__/
+**/__pycache__/
+*.pyc
 models/
 experimentos/grupo_a/__pycache__/experimentos_a.cpython-312.pyc
+
+.codex/
+.agents/

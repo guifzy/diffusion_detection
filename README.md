@@ -101,9 +101,11 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 ```text
 .
 ├── data/
-│   ├── extracted/           # metadados consolidados do dataset (ex.: metadata.json)
-│   ├── metadata/            # metadados por vídeo/região e CSV com links/labels
-│   └── videos/              # vídeos de entrada utilizados no processamento
+│   ├── bronze/              # vídeos brutos e manifestos de ingestão
+│   ├── silver/              # metadados e features processadas
+│   ├── gold/                # dataset final para treino
+│   ├── reports/             # relatórios de qualidade/execução
+│   └── docs/                # contratos de dados
 ├── experimentos/
 │   ├── grupo_a/             # notebooks e documentação do Grupo A (textura)
 │   ├── grupo_b/             # notebooks e documentação do Grupo B (estrutura)
@@ -113,15 +115,20 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 │   └── pre_processamento/   # notebooks de pré-processamento
 ├── output_exemples/         # exemplos de saídas e resultados
 ├── src/
-│   ├── create_metadata.py   # scripts utilitários para arquitetura do fluxo
-│   └── pre_processing.py    # pré-processamento e extração de regiões dos vídeos
+│   ├── shared/              # contratos, storage, paths, sinais A-E e utilitários comuns
+│   ├── data_engineering/    # Bronze/Silver/Gold, DVC, Prefect e qualidade dos dados
+│   ├── ml/                  # domínio futuro de treino, avaliação e registry de modelos
+│   └── api/                 # serviços usados pela futura API/SaaS
+├── tests/                   # testes por domínio do monorepo
+├── dvc.yaml                 # estágios reprodutíveis do pipeline de dados
+├── params.yaml              # parâmetros do pipeline DVC
 ├── requirements.txt         # dependências do projeto
 └── README.md                # este documento
 ```
 
 ## Pré-processamento e extração de regiões
 
-O pipeline inclui o script `src/pre_processing.py` para preparar os vídeos e extrair regiões de interesse por frame:
+O pipeline inclui o módulo `src.data_engineering.preprocessing` para preparar os vídeos e extrair regiões de interesse por frame:
 
 - **face**: região facial principal;
 - **contorno**: borda/periferia da face para análise de transições;
@@ -140,11 +147,12 @@ Os metadados do projeto são organizados em dois formatos complementares:
 
 ## Formato dos arquivos de vídeo
 
-Atualmente, o projeto utiliza vídeos em `data/videos/` e gera metadados auxiliares em `data/metadata/` e `data/extracted/`.
+Atualmente, o projeto utiliza vídeos brutos em `data/bronze/videos/`, manifestos em `data/bronze/manifests/` e metadados/features derivados na camada `data/silver/`.
 
-- `video-metadata-publish-with-links.csv`: tabela com `label`, `nome` e `link` dos vídeos.
-- `*_meta.json`: metadados por vídeo com informações da extração de regiões (face, contorno e fundo).
-- `metadata.json`: índice consolidado do dataset para consumo nos experimentos.
+- `data/bronze/manifests/video-metadata-publish-with-links.csv`: tabela com rótulos e links dos vídeos.
+- `data/bronze/manifests/bronze_manifest.csv`: manifesto oficial de ingestão, gerado pelo pipeline.
+- `data/silver/face_metadata_json/*_meta.json`: metadados auxiliares por vídeo com informações da extração de regiões.
+- `data/silver/face_metadata/`: versão tabular contratada dos metadados faciais.
 
 Essa organização facilita leitura rápida dos dados nos notebooks e padroniza a extração de sinais espaciais, espectrais e temporais.
 
@@ -198,9 +206,9 @@ Para mais informações sobre o mesmo, acessar o seu repositório:
 
 1. **Entenda o projeto**: leia este `README.md` para compreender objetivos e grupos metodológicos
 2. **Explore os experimentos**: acesse `experimentos/` para consultar os notebooks por grupo
-3. **Verifique metadados**: inspecione `data/extracted/metadata.json` para mapeamento dos dados processados
-4. **Rode pré-processamento** (se necessário): use `src/pre_processing.py` para extrair regiões e gerar metadados
-5. **Consolidar metadados** (se necessário): use `src/create_metadata.py` para rotinas auxiliares
+3. **Verifique metadados**: inspecione `data/silver/face_metadata_json/*_meta.json` e o catálogo em `data/bronze/manifests/video-metadata-publish-with-links.csv`
+4. **Rode pré-processamento** (se necessário): use `python -m src.data_engineering.preprocessing` para extrair regiões e gerar metadados
+5. **Gere features**: use `python -m src.api` para um vídeo ou `python -m src.data_engineering.datasets` para lote
 
 **Para começar rapidamente:**
 
@@ -260,12 +268,12 @@ brew install chromium
 
 ### Fluxo sugerido de trabalho
 
-1. Organize vídeos de entrada em `data/videos/` (devem estar no formato esperado)
-2. Execute pré-processamento: `python src/pre_processing.py` (gera metadados e regiões)
-3. Revise metadados consolidados em `data/extracted/metadata.json`
-4. Execute notebooks de experimentos em `experimentos/` por grupo
-5. Colete frame-level e video-level metrics para análise comparativa
-6. Integre resultados em ensemble híbrido final
+1. Organize vídeos de entrada em `data/bronze/videos/` ou use `python -m src.data_engineering.ingestion` para baixá-los via YouTube
+2. Execute pré-processamento: `python -m src.data_engineering.preprocessing --video data/bronze/videos/exemplo.mp4`
+3. Extraia features de produção: `python -m src.api data/bronze/videos/exemplo.mp4 --groups abcde`
+4. Para treinamento, gere o Gold local: `python -m src.data_engineering.datasets --groups abcde`
+5. Use notebooks em `experimentos/` para análise comparativa e validação metodológica
+6. Integre o dataset Gold ao modelo final
 
 ## Status do projeto
 
@@ -275,13 +283,15 @@ Projeto em evolução incremental com base funcional para extração de sinais e
 
 **Componentes implementados:**
 
-- **Estrutura de experimentos ativa**: 5 notebooks em `experimentos/` (grupos A, B, C, D + pré-processamento)
-- **Pipeline de pré-processamento**: script `src/pre_processing.py` para detecção facial, extração de regiões (face/contorno/fundo) e geração de metadados
+- **Estrutura de experimentos ativa**: 5 notebooks metodológicos em `experimentos/` (grupos A, B, C, D e E) + pré-processamento
+- **Pipeline de pré-processamento**: módulo `src.data_engineering.preprocessing` para detecção facial, extração de regiões (face/contorno/fundo) e geração de metadados
 - **Base de dados local**:
-  - `data/videos/`: 2.042 vídeos
-  - `data/metadata/`: 11 metadados de teste (`*_meta.json`) + CSV consolidado
-  - `data/extracted/metadata.json`: índice consolidado do dataset
-- **Documentação técnica**: cada grupo (A, B, C, D) possui `README.md` com escopo, métricas e limitações
+  - `data/bronze/videos/`: vídeos brutos
+  - `data/bronze/manifests/`: catálogo de origem e manifesto de ingestão
+  - `data/silver/face_metadata_json/`: metadados auxiliares (`*_meta.json`)
+  - `data/silver/face_metadata/`, `data/silver/frame_features/` e `data/silver/video_features/`: ativos Silver estruturados
+  - `data/gold/`: dataset final de treino
+- **Documentação técnica**: cada grupo (A, B, C, D e E) possui `README.md` com escopo, métricas, avaliação exploratória e limitações
 
 
 ## Referências

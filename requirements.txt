@@ -1,6 +1,7 @@
 pandas>=2.0.0
 numpy>=2.0.0
 opencv-contrib-python>=4.13.0
+pyarrow>=15.0.0
 matplotlib>=3.8.0
 scikit-image>=0.20.0
 scipy>=1.10.0
@@ -12,3 +13,9 @@ tqdm>=4.66.0
 retina-face
 tf-keras
 torch
+yt-dlp>=2024.0.0
+dvc>=3.50.0
+dvc-s3>=3.0.0
+prefect>=3.0.0
+pytest>=8.0.0
+minio>=7.2.0

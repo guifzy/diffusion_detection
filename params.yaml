@@ -1,0 +1,13 @@
+pipeline:
+  catalog: data/bronze/manifests/video-metadata-publish-with-links.csv
+  videos_dir: data/bronze/videos
+  metadata_dir: data/silver/face_metadata_json
+  groups: abcde
+  max_frames:
+  detect_every: 1
+  limit:
+  url_column: Media
+  label_column: Video Ground Truth
+  generate_missing_metadata: true
+  overwrite_metadata: false
+
