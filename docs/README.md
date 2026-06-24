@@ -339,6 +339,20 @@ Em produção, um flow Prefect deve agendar `dvc repro`, monitorar falhas e publ
 
 O passo a passo local para MinIO como remote DVC está em `docs/minio_dvc_local.md`.
 
+O Docker agora cobre dois serviços:
+
+* `minio`: armazenamento S3 local.
+* `data-pipeline`: ambiente reprodutível Python/DVC para executar testes, `dvc repro` e `dvc push`.
+
+Execução containerizada:
+
+```bash
+docker compose --profile pipeline build data-pipeline
+docker compose --profile pipeline run --rm data-pipeline python -m src.data_engineering.infra init
+docker compose --profile pipeline run --rm data-pipeline dvc repro
+docker compose --profile pipeline run --rm data-pipeline dvc push
+```
+
 ### Ingestão YouTube para Bronze
 
 ```bash
@@ -354,10 +368,10 @@ python -m src.data_engineering.ingestion --links-file links.txt --label Fake
 Para executar a ingestao a partir de um CSV com links:
 
 ```bash
-python -m src.data_engineering.ingestion --source-csv data/bronze/manifests/video-metadata-publish-with-links.csv --url-column Media --label-column "Video Ground Truth"
+python -m src.data_engineering.ingestion --source-csv data/bronze/manifests/video-metadata-publish-with-links.csv
 ```
 
-O script baixa vídeos com `yt-dlp` em `data/bronze/videos/` e registra `data/bronze/manifests/bronze_manifest.csv`, seguindo o contrato `bronze_manifest`.
+Esse CSV deve conter apenas `link,label`, onde `label=true` representa Real e `label=false` representa Fake. O script baixa vídeos com `yt-dlp` em `data/bronze/videos/` e registra `data/bronze/manifests/bronze_manifest.csv`, seguindo o contrato `bronze_manifest`.
 
 ### Pré-processamento facial
 
@@ -387,7 +401,7 @@ video -> metadata facial -> features frame-level A-E -> features video-level -> 
 python -m src.data_engineering.datasets --groups abcde --generate-missing-metadata
 ```
 
-O script lê `data/bronze/manifests/video-metadata-publish-with-links.csv`, procura vídeos em `data/bronze/videos/`, garante metadados quando solicitado e cria uma tabela Gold com uma linha por vídeo.
+O script lê `data/bronze/manifests/bronze_manifest.csv`, procura vídeos em `data/bronze/videos/`, garante metadados quando solicitado e cria uma tabela Gold com uma linha por vídeo.
 
 Ele tambem materializa `data/silver/video_features/`, separando o ativo Silver tecnico do `gold_training_dataset`.
 

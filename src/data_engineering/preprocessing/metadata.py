@@ -205,6 +205,23 @@ def write_silver_face_metadata(metadata: list[dict[str, Any]], output_path: str 
     return write_dataframe(pd.DataFrame(metadata_to_frame_contract_rows(metadata)), output_path, index=False)
 
 
+def video_path_from_manifest_row(row: Any, videos_dir: str | Path) -> Path | None:
+    storage_path = str(row.get("storage_path", "") or "").strip()
+    if storage_path:
+        return Path(storage_path)
+
+    filename = str(row.get("filename", "") or "").strip()
+    if filename:
+        return Path(videos_dir) / filename
+
+    return None
+
+
+def is_processable_manifest_row(row: Any) -> bool:
+    status = str(row.get("status", "") or "").strip()
+    return status in {"", "downloaded", "skipped"}
+
+
 def process_catalog(
     catalog_path: str | Path,
     videos_dir: str | Path,
@@ -219,7 +236,14 @@ def process_catalog(
     outputs: list[Path] = []
 
     for _, row in catalog.iterrows():
-        video_path = Path(videos_dir) / row["Filename"]
+        if not is_processable_manifest_row(row):
+            continue
+
+        video_path = video_path_from_manifest_row(row, videos_dir)
+        if video_path is None:
+            logger.warning("Skipping manifest row without storage_path or filename.")
+            continue
+
         output_path = metadata_path_for_video(video_path, metadata_dir)
         if output_path.exists() and not overwrite:
             outputs.append(output_path)
@@ -236,7 +260,7 @@ def process_catalog(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract face metadata for one video or a catalog.")
     parser.add_argument("--video", type=Path, help="Path to a single video.")
-    parser.add_argument("--catalog", type=Path, help="CSV catalog with a Filename column.")
+    parser.add_argument("--manifest", "--catalog", dest="manifest", type=Path, help="Bronze manifest with storage_path/filename columns.")
     parser.add_argument("--videos-dir", type=Path, default=BRONZE_VIDEOS_DIR)
     parser.add_argument("--metadata-dir", type=Path, default=METADATA_DIR)
     parser.add_argument("--max-frames", type=int, default=None)
@@ -254,9 +278,9 @@ def main() -> None:
         extract_face_metadata(args.video, output, max_frames=args.max_frames, detect_every=args.detect_every)
         return
 
-    if args.catalog:
+    if args.manifest:
         process_catalog(
-            args.catalog,
+            args.manifest,
             args.videos_dir,
             metadata_dir=args.metadata_dir,
             max_frames=args.max_frames,
@@ -265,7 +289,7 @@ def main() -> None:
         )
         return
 
-    parser.error("Use --video or --catalog.")
+    parser.error("Use --video or --manifest.")
 
 
 if __name__ == "__main__":

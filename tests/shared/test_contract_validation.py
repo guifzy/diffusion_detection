@@ -6,6 +6,21 @@ from src.shared.contracts import validate_dataframe_contract
 from src.shared.contracts.schemas import BRONZE_MANIFEST_COLUMNS
 
 
+def test_bronze_source_csv_contract_accepts_minimal_rows() -> None:
+    df = pd.DataFrame(
+        [
+            {"link": "https://youtube.com/watch?v=abc", "label": "true"},
+            {"link": "https://youtube.com/watch?v=def", "label": "false"},
+        ]
+    )
+
+    result = validate_dataframe_contract(df, "bronze_source_csv")
+
+    assert result.status == "passed"
+    assert result.missing_columns == ()
+    assert result.invalid_values == {}
+
+
 def test_bronze_manifest_contract_accepts_valid_rows() -> None:
     df = pd.DataFrame(
         [
@@ -55,4 +70,3 @@ def test_bronze_manifest_contract_rejects_invalid_status() -> None:
 
     assert result.status == "failed"
     assert result.invalid_values["status"] == ("ok",)
-

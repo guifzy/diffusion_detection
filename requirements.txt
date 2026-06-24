@@ -17,5 +17,6 @@ yt-dlp>=2024.0.0
 dvc>=3.50.0
 dvc-s3>=3.0.0
 prefect>=3.0.0
+great_expectations>=1.0.0
 pytest>=8.0.0
 minio>=7.2.0

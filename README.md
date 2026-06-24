@@ -104,8 +104,7 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 │   ├── bronze/              # vídeos brutos e manifestos de ingestão
 │   ├── silver/              # metadados e features processadas
 │   ├── gold/                # dataset final para treino
-│   ├── reports/             # relatórios de qualidade/execução
-│   └── docs/                # contratos de dados
+│   └── reports/             # relatórios de qualidade/execução
 ├── experimentos/
 │   ├── grupo_a/             # notebooks e documentação do Grupo A (textura)
 │   ├── grupo_b/             # notebooks e documentação do Grupo B (estrutura)
@@ -140,19 +139,24 @@ Essas regiões são usadas para análise espacial, espectral e temporal de forma
 
 ## Metadados e organização dos arquivos
 
-Os metadados do projeto são organizados em dois formatos complementares:
+Os metadados do projeto são organizados por contratos de dados:
 
-- **CSV**: tabela consolidada com campos como `label`, `nome` e `link` dos vídeos, facilitando filtragem, auditoria e integração com os experimentos.
-- **JSON**: metadados detalhados por vídeo e por região extraída (face, contorno e fundo), preservando estrutura hierárquica e atributos adicionais.
+- **CSV de entrada Bronze**: `link,label`, onde `label=true` representa vídeo real e `label=false` representa vídeo falso.
+- **Manifesto Bronze**: `bronze_manifest.csv`, fonte de verdade após a ingestão, com `video_id`, `source_url`, `filename`, `storage_path`, `sha256`, `label`, `status` e rastreabilidade.
+- **JSON auxiliar Silver**: metadados detalhados por vídeo e por frame para reuso do extrator atual.
+- **Parquet/CSV Silver e Gold**: ativos tabulares contratados para validação, treinamento e auditoria.
 
 ## Formato dos arquivos de vídeo
 
 Atualmente, o projeto utiliza vídeos brutos em `data/bronze/videos/`, manifestos em `data/bronze/manifests/` e metadados/features derivados na camada `data/silver/`.
 
-- `data/bronze/manifests/video-metadata-publish-with-links.csv`: tabela com rótulos e links dos vídeos.
+- `data/bronze/manifests/video-metadata-publish-with-links.csv`: CSV de entrada com apenas `link,label`.
 - `data/bronze/manifests/bronze_manifest.csv`: manifesto oficial de ingestão, gerado pelo pipeline.
 - `data/silver/face_metadata_json/*_meta.json`: metadados auxiliares por vídeo com informações da extração de regiões.
 - `data/silver/face_metadata/`: versão tabular contratada dos metadados faciais.
+- `data/silver/frame_features/`: features por frame.
+- `data/silver/video_features/`: features agregadas por vídeo.
+- `data/gold/gold_training_dataset.parquet`: dataset oficial para treino.
 
 Essa organização facilita leitura rápida dos dados nos notebooks e padroniza a extração de sinais espaciais, espectrais e temporais.
 
@@ -206,22 +210,22 @@ Para mais informações sobre o mesmo, acessar o seu repositório:
 
 1. **Entenda o projeto**: leia este `README.md` para compreender objetivos e grupos metodológicos
 2. **Explore os experimentos**: acesse `experimentos/` para consultar os notebooks por grupo
-3. **Verifique metadados**: inspecione `data/silver/face_metadata_json/*_meta.json` e o catálogo em `data/bronze/manifests/video-metadata-publish-with-links.csv`
-4. **Rode pré-processamento** (se necessário): use `python -m src.data_engineering.preprocessing` para extrair regiões e gerar metadados
-5. **Gere features**: use `python -m src.api` para um vídeo ou `python -m src.data_engineering.datasets` para lote
+3. **Leia os contratos**: consulte `docs/contracts.md`
+4. **Verifique a fonte Bronze**: inspecione `data/bronze/manifests/video-metadata-publish-with-links.csv`
+5. **Execute o pipeline reprodutível**: use `dvc repro` depois de configurar MinIO/DVC
 
 **Para começar rapidamente:**
 
 ```bash
-# 1. Instale dependências
+cp .env.example .env
+docker compose up -d minio
 pip install -r requirements.txt
-
-# 2. Configure Playwright (se usar notebooks com exportação)
-python -m playwright install chromium
-
-# 3. Abra um notebook no Jupyter
-jupyter notebook experimentos/grupo_a/testes_a.ipynb
+python -m src.data_engineering.infra init
+dvc repro
+dvc push
 ```
+
+O guia completo de execução local com Docker, MinIO e DVC está em `docs/minio_dvc_local.md`.
 
 ## Ambiente e execução
 

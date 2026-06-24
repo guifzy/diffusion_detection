@@ -27,6 +27,11 @@ BRONZE_MANIFEST_COLUMNS = (
     "source_type",
 )
 
+BRONZE_SOURCE_COLUMNS = (
+    "link",
+    "label",
+)
+
 FRAME_METADATA_COLUMNS = (
     "video_id",
     "frame_id",
@@ -92,6 +97,16 @@ PREDICTION_PAYLOAD_FIELDS = (
 
 
 CONTRACTS = {
+    "bronze_source_csv": DataContract(
+        name="bronze_source_csv",
+        layer="bronze_input",
+        grain="one row per source link",
+        required_columns=BRONZE_SOURCE_COLUMNS,
+        accepted_values={
+            "label": ("true", "false", "True", "False"),
+        },
+        description="Minimal external CSV consumed by Bronze ingestion.",
+    ),
     "bronze_manifest": DataContract(
         name="bronze_manifest",
         layer="bronze",
@@ -156,4 +171,3 @@ CONTRACTS = {
 def missing_required_columns(contract_name: str, columns: set[str]) -> list[str]:
     contract = CONTRACTS[contract_name]
     return [column for column in contract.required_columns if column not in columns]
-

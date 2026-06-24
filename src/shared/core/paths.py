@@ -16,6 +16,8 @@ SILVER_FRAME_FEATURES_DIR = SILVER_DIR / "frame_features"
 SILVER_VIDEO_FEATURES_DIR = SILVER_DIR / "video_features"
 GOLD_DIR = DATA_DIR / "gold"
 REPORTS_DIR = DATA_DIR / "reports"
+REPORTS_LOG_DIR = REPORTS_DIR / "logs"
+REPORTS_PLOTS_DIR = REPORTS_DIR / "plots"
 MODELS_DIR = PROJECT_ROOT / "models"
 
 VIDEO_CATALOG_PATH = BRONZE_MANIFESTS_DIR / "video-metadata-publish-with-links.csv"
@@ -32,6 +34,8 @@ def ensure_data_dirs() -> None:
         SILVER_VIDEO_FEATURES_DIR,
         GOLD_DIR,
         REPORTS_DIR,
+        REPORTS_LOG_DIR,
+        REPORTS_PLOTS_DIR,
         MODELS_DIR,
     ]:
         path.mkdir(parents=True, exist_ok=True)
@@ -66,3 +70,22 @@ def pipeline_report_path(reports_dir: str | Path = REPORTS_DIR, run_id: str | No
 
     run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Path(reports_dir) / f"pipeline_run_{run_id}.json"
+
+
+def pipeline_latest_report_path(reports_dir: str | Path = REPORTS_DIR) -> Path:
+    return Path(reports_dir) / "pipeline_latest.json"
+
+
+def pipeline_metrics_path(reports_dir: str | Path = REPORTS_DIR) -> Path:
+    return Path(reports_dir) / "metrics.json"
+
+
+def pipeline_log_path(reports_dir: str | Path = REPORTS_DIR, run_id: str | None = None) -> Path:
+    from datetime import datetime, timezone
+
+    run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%d")
+    return Path(reports_dir) / "logs" / f"pipeline_{run_id}.jsonl"
+
+
+def pipeline_plot_path(name: str, reports_dir: str | Path = REPORTS_DIR) -> Path:
+    return Path(reports_dir) / "plots" / name

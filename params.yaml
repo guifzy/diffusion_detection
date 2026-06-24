@@ -1,13 +1,13 @@
 pipeline:
-  catalog: data/bronze/manifests/video-metadata-publish-with-links.csv
+  source_csv: data/bronze/manifests/video-metadata-publish-with-links.csv
+  manifest: data/bronze/manifests/bronze_manifest.csv
   videos_dir: data/bronze/videos
   metadata_dir: data/silver/face_metadata_json
   groups: abcde
   max_frames:
   detect_every: 1
   limit:
-  url_column: Media
-  label_column: Video Ground Truth
+  url_column: link
+  label_column: label
   generate_missing_metadata: true
   overwrite_metadata: false
-

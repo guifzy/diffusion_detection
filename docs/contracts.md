@@ -2,6 +2,25 @@
 
 Este documento define os contratos oficiais da primeira versao do pipeline de engenharia de dados. Um contrato define a granularidade, camada, campos obrigatorios e valores aceitos de cada ativo produzido ou consumido pelo pipeline.
 
+## bronze_source_csv
+
+Camada: entrada externa para Bronze
+
+Granularidade: uma linha por URL de video a ingerir.
+
+Objetivo: ser o contrato minimo para datasets de links. O CSV externo nao precisa trazer nome de arquivo, hash, id de video ou metadados de armazenamento; essas informacoes sao derivadas pela ingestao e registradas no manifesto Bronze.
+
+Campos obrigatorios:
+
+| Campo | Tipo logico | Descricao |
+| --- | --- | --- |
+| `link` | string | URL do video a baixar. |
+| `label` | boolean/string | `true` para video real e `false` para video falso/IA. |
+
+Destino local atual: `data/bronze/manifests/video-metadata-publish-with-links.csv`
+
+Consumidor atual: `python -m src.data_engineering.ingestion`
+
 ## bronze_manifest
 
 Camada: Bronze
@@ -28,6 +47,8 @@ Campos obrigatorios:
 Produtor atual: `python -m src.data_engineering.ingestion`
 
 Destino local: `data/bronze/manifests/bronze_manifest.csv`
+
+Observacao: depois da ingestao, `bronze_manifest.csv` vira a fonte de verdade para Silver e Gold. O CSV `link,label` nao e usado pelas etapas seguintes.
 
 ## frame_metadata
 

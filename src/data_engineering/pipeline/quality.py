@@ -5,13 +5,16 @@ from pathlib import Path
 import pandas as pd
 
 from src.shared.contracts import summarize_validation_results, validate_dataframe_contract, validate_table_contract
-from src.shared.core.io_utils import read_dataframe
+from src.shared.core.io_utils import read_dataframe, write_dataframe, write_json
 from src.shared.core.paths import (
     BRONZE_MANIFEST_PATH,
     GOLD_DIR,
     METADATA_DIR,
+    REPORTS_DIR,
     SILVER_DIR,
     gold_training_dataset_path,
+    pipeline_metrics_path,
+    pipeline_plot_path,
     silver_video_features_path,
 )
 
@@ -32,6 +35,30 @@ def _read_many_tables(paths: list[Path]) -> pd.DataFrame:
         except (FileNotFoundError, ValueError, ImportError):
             continue
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def collect_pipeline_tables(
+    manifest_path: str | Path = BRONZE_MANIFEST_PATH,
+    silver_dir: str | Path = SILVER_DIR,
+    gold_dir: str | Path = GOLD_DIR,
+) -> dict[str, tuple[pd.DataFrame, str]]:
+    silver_dir = Path(silver_dir)
+    frame_metadata = _read_many_tables(
+        sorted((silver_dir / "face_metadata").glob("*.parquet")) + sorted((silver_dir / "face_metadata").glob("*.csv"))
+    )
+    frame_features = _read_many_tables(
+        sorted((silver_dir / "frame_features").glob("*.parquet")) + sorted((silver_dir / "frame_features").glob("*.csv"))
+    )
+    return {
+        "bronze_manifest": (_read_optional_table(manifest_path), str(manifest_path)),
+        "frame_metadata": (frame_metadata, str(silver_dir / "face_metadata")),
+        "frame_features": (frame_features, str(silver_dir / "frame_features")),
+        "video_features": (_read_optional_table(silver_video_features_path(silver_dir)), str(silver_video_features_path(silver_dir))),
+        "gold_training_dataset": (
+            _read_optional_table(gold_training_dataset_path(gold_dir)),
+            str(gold_training_dataset_path(gold_dir)),
+        ),
+    }
 
 
 def bronze_quality(manifest_path: str | Path = BRONZE_MANIFEST_PATH) -> dict:
@@ -124,15 +151,24 @@ def silver_features_quality(silver_dir: str | Path = SILVER_DIR) -> dict:
 def gold_quality(gold_dir: str | Path = GOLD_DIR) -> dict:
     gold = _read_optional_table(gold_training_dataset_path(gold_dir))
     if gold.empty:
-        return {"rows": 0, "trainable_rows": 0, "real_count": 0, "fake_count": 0, "split_distribution": {}}
+        return {
+            "rows": 0,
+            "trainable_rows": 0,
+            "real_count": 0,
+            "fake_count": 0,
+            "quality_flag_distribution": {},
+            "split_distribution": {},
+        }
 
     labels = gold["target_label"].fillna("") if "target_label" in gold else pd.Series([], dtype=str)
     splits = gold["dataset_split"].fillna("").value_counts().to_dict() if "dataset_split" in gold else {}
+    quality_flags = gold["quality_flag"].fillna("").value_counts().to_dict() if "quality_flag" in gold else {}
     return {
         "rows": int(len(gold)),
         "trainable_rows": int(gold["is_trainable"].fillna(False).astype(bool).sum()) if "is_trainable" in gold else 0,
         "real_count": int((labels == "Real").sum()),
         "fake_count": int((labels == "Fake").sum()),
+        "quality_flag_distribution": {str(key): int(value) for key, value in quality_flags.items()},
         "split_distribution": {str(key): int(value) for key, value in splits.items()},
     }
 
@@ -164,16 +200,136 @@ def validate_pipeline_assets(
     return summarize_validation_results(results)
 
 
+def gx_validation_report(
+    manifest_path: str | Path = BRONZE_MANIFEST_PATH,
+    silver_dir: str | Path = SILVER_DIR,
+    gold_dir: str | Path = GOLD_DIR,
+) -> dict:
+    from src.data_engineering.pipeline.gx_validation import validate_tables_with_gx
+
+    tables = collect_pipeline_tables(manifest_path=manifest_path, silver_dir=silver_dir, gold_dir=gold_dir)
+    return validate_tables_with_gx(tables)
+
+
+def blocking_errors_for_report(
+    report: dict,
+    fail_on_empty_gold: bool = True,
+    fail_on_contract_error: bool = True,
+    fail_on_gx_error: bool = False,
+    max_missing_feature_ratio: float = 0.5,
+    max_fallback_center_ratio: float = 0.35,
+) -> list[str]:
+    errors: list[str] = []
+    contracts = report.get("contracts", {})
+    gx = report.get("great_expectations", {})
+    bronze = report.get("bronze", {})
+    silver_metadata = report.get("silver_metadata", {})
+    silver_features = report.get("silver_features", {})
+    gold = report.get("gold", {})
+
+    if fail_on_contract_error and contracts.get("status") != "passed":
+        errors.append("contract_validation_failed")
+    if fail_on_gx_error and gx and gx.get("status") != "passed":
+        errors.append("great_expectations_failed")
+    if bronze.get("input_rows", 0) <= 0:
+        errors.append("bronze_manifest_empty")
+    if silver_metadata.get("videos_processed", 0) <= 0:
+        errors.append("silver_metadata_empty")
+    if silver_features.get("videos_processed", 0) <= 0:
+        errors.append("silver_video_features_empty")
+    if fail_on_empty_gold and gold.get("rows", 0) <= 0:
+        errors.append("gold_dataset_empty")
+    if fail_on_empty_gold and gold.get("trainable_rows", 0) <= 0:
+        errors.append("gold_without_trainable_rows")
+    if silver_features.get("avg_missing_feature_ratio", 0.0) > max_missing_feature_ratio:
+        errors.append("missing_feature_ratio_above_threshold")
+    if silver_metadata.get("fallback_center_ratio", 0.0) > max_fallback_center_ratio:
+        errors.append("fallback_center_ratio_above_threshold")
+
+    return errors
+
+
+def build_metrics_summary(report: dict) -> dict:
+    return {
+        "pipeline_status": 1 if report.get("status") == "passed" else 0,
+        "blocking_error_count": len(report.get("blocking_errors", [])),
+        "bronze_input_rows": report.get("bronze", {}).get("input_rows", 0),
+        "bronze_downloaded": report.get("bronze", {}).get("downloaded", 0),
+        "bronze_failed": report.get("bronze", {}).get("failed", 0),
+        "silver_metadata_videos": report.get("silver_metadata", {}).get("videos_processed", 0),
+        "silver_metadata_fallback_center_ratio": report.get("silver_metadata", {}).get("fallback_center_ratio", 0.0),
+        "silver_features_videos": report.get("silver_features", {}).get("videos_processed", 0),
+        "silver_features_avg_missing_feature_ratio": report.get("silver_features", {}).get(
+            "avg_missing_feature_ratio", 0.0
+        ),
+        "gold_rows": report.get("gold", {}).get("rows", 0),
+        "gold_trainable_rows": report.get("gold", {}).get("trainable_rows", 0),
+        "gold_real_count": report.get("gold", {}).get("real_count", 0),
+        "gold_fake_count": report.get("gold", {}).get("fake_count", 0),
+        "contract_status": 1 if report.get("contracts", {}).get("status") == "passed" else 0,
+        "gx_status": 1 if report.get("great_expectations", {}).get("status") == "passed" else 0,
+    }
+
+
+def write_quality_artifacts(report: dict, reports_dir: str | Path = REPORTS_DIR) -> dict:
+    reports_dir = Path(reports_dir)
+    metrics_path = write_json(build_metrics_summary(report), pipeline_metrics_path(reports_dir))
+
+    quality_rows = []
+    for label, value in report.get("gold", {}).get("quality_flag_distribution", {}).items():
+        quality_rows.append({"kind": "quality_flag", "label": label, "count": value})
+    for label, value in report.get("gold", {}).get("split_distribution", {}).items():
+        quality_rows.append({"kind": "dataset_split", "label": label, "count": value})
+    quality_rows.extend(
+        [
+            {"kind": "target_label", "label": "Real", "count": report.get("gold", {}).get("real_count", 0)},
+            {"kind": "target_label", "label": "Fake", "count": report.get("gold", {}).get("fake_count", 0)},
+        ]
+    )
+    distribution_path = write_dataframe(
+        pd.DataFrame(quality_rows),
+        pipeline_plot_path("gold_distributions.csv", reports_dir),
+        index=False,
+    )
+
+    stage_rows = [
+        {"stage": "bronze", "metric": "input_rows", "value": report.get("bronze", {}).get("input_rows", 0)},
+        {"stage": "bronze", "metric": "downloaded", "value": report.get("bronze", {}).get("downloaded", 0)},
+        {
+            "stage": "silver_metadata",
+            "metric": "videos_processed",
+            "value": report.get("silver_metadata", {}).get("videos_processed", 0),
+        },
+        {
+            "stage": "silver_features",
+            "metric": "videos_processed",
+            "value": report.get("silver_features", {}).get("videos_processed", 0),
+        },
+        {"stage": "gold", "metric": "rows", "value": report.get("gold", {}).get("rows", 0)},
+        {"stage": "gold", "metric": "trainable_rows", "value": report.get("gold", {}).get("trainable_rows", 0)},
+    ]
+    stage_path = write_dataframe(
+        pd.DataFrame(stage_rows),
+        pipeline_plot_path("stage_counts.csv", reports_dir),
+        index=False,
+    )
+    return {"metrics_path": str(metrics_path), "distribution_plot_path": str(distribution_path), "stage_plot_path": str(stage_path)}
+
+
 def build_quality_report(
     manifest_path: str | Path = BRONZE_MANIFEST_PATH,
     metadata_dir: str | Path = METADATA_DIR,
     silver_dir: str | Path = SILVER_DIR,
     gold_dir: str | Path = GOLD_DIR,
+    include_gx: bool = False,
 ) -> dict:
-    return {
+    report = {
         "bronze": bronze_quality(manifest_path),
         "silver_metadata": silver_metadata_quality(metadata_dir, silver_dir),
         "silver_features": silver_features_quality(silver_dir),
         "gold": gold_quality(gold_dir),
         "contracts": validate_pipeline_assets(manifest_path, silver_dir, gold_dir),
     }
+    if include_gx:
+        report["great_expectations"] = gx_validation_report(manifest_path, silver_dir, gold_dir)
+    return report

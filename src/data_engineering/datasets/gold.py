@@ -9,10 +9,10 @@ import pandas as pd
 
 from src.shared.core.io_utils import write_dataframe
 from src.shared.core.paths import (
+    BRONZE_MANIFEST_PATH,
     BRONZE_VIDEOS_DIR,
     GOLD_DIR,
     METADATA_DIR,
-    VIDEO_CATALOG_PATH,
     ensure_data_dirs,
     gold_training_dataset_path,
     metadata_path_for_video,
@@ -26,16 +26,28 @@ from src.data_engineering.preprocessing import extract_face_metadata
 logger = logging.getLogger(__name__)
 
 
-def _catalog_rows(catalog_path: str | Path, videos_dir: str | Path) -> pd.DataFrame:
-    catalog = pd.read_csv(catalog_path)
-    if "Filename" not in catalog.columns:
-        raise ValueError("Catalog must contain a Filename column.")
-    catalog["video_path"] = catalog["Filename"].apply(lambda filename: str(Path(videos_dir) / filename))
-    return catalog
+def _manifest_rows(manifest_path: str | Path, videos_dir: str | Path) -> pd.DataFrame:
+    manifest = pd.read_csv(manifest_path)
+    if "storage_path" not in manifest.columns and "filename" not in manifest.columns:
+        raise ValueError("Bronze manifest must contain storage_path or filename.")
+
+    if "status" in manifest.columns:
+        manifest = manifest[manifest["status"].fillna("").isin(["", "downloaded", "skipped"])].copy()
+
+    def resolve_video_path(row: pd.Series) -> str:
+        storage_path = str(row.get("storage_path", "") or "").strip()
+        if storage_path:
+            return storage_path
+        filename = str(row.get("filename", "") or "").strip()
+        return str(Path(videos_dir) / filename) if filename else ""
+
+    manifest["video_path"] = manifest.apply(resolve_video_path, axis=1)
+    manifest = manifest[manifest["video_path"].astype(str).str.len() > 0].copy()
+    return manifest
 
 
 def build_gold_dataset(
-    catalog_path: str | Path = VIDEO_CATALOG_PATH,
+    catalog_path: str | Path = BRONZE_MANIFEST_PATH,
     videos_dir: str | Path = BRONZE_VIDEOS_DIR,
     metadata_dir: str | Path = METADATA_DIR,
     output_path: str | Path | None = None,
@@ -55,7 +67,7 @@ def build_gold_dataset(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     silver_output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    catalog = _catalog_rows(catalog_path, videos_dir)
+    catalog = _manifest_rows(catalog_path, videos_dir)
     if limit is not None:
         catalog = catalog.head(limit)
 
@@ -74,7 +86,7 @@ def build_gold_dataset(
             logger.warning("Skipping video without metadata: %s", video_path)
             continue
 
-        label = row.get("Video Ground Truth")
+        label = row.get("label")
         try:
             frame_features, video_features = build_video_features(
                 video_path,
@@ -90,9 +102,10 @@ def build_gold_dataset(
         frame_saved_path = write_dataframe(frame_features, silver_frame_features_path(video_path), index=False)
         logger.info("Saved Silver frame features for %s to %s", video_path.name, frame_saved_path)
 
-        video_features["filename"] = row["Filename"]
-        video_features["audio_label"] = row.get("Audio Ground Truth")
-        video_features["media"] = row.get("Media")
+        video_features["filename"] = video_path.name
+        video_features["source_url"] = row.get("source_url", "")
+        video_features["storage_path"] = str(video_path)
+        video_features["ingestion_status"] = row.get("status", "")
         rows.append(video_features)
 
     silver_video_features = pd.DataFrame(rows)
@@ -170,7 +183,7 @@ def assign_dataset_splits(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build local Gold dataset for model training.")
-    parser.add_argument("--catalog", type=Path, default=VIDEO_CATALOG_PATH)
+    parser.add_argument("--manifest", "--catalog", dest="manifest", type=Path, default=BRONZE_MANIFEST_PATH)
     parser.add_argument("--videos-dir", type=Path, default=BRONZE_VIDEOS_DIR)
     parser.add_argument("--metadata-dir", type=Path, default=METADATA_DIR)
     parser.add_argument("--output", type=Path, default=None)
@@ -187,7 +200,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     build_gold_dataset(
-        catalog_path=args.catalog,
+        catalog_path=args.manifest,
         videos_dir=args.videos_dir,
         metadata_dir=args.metadata_dir,
         output_path=args.output,

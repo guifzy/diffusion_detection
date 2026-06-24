@@ -2,13 +2,13 @@ stages:
   ingest_bronze:
     cmd: >-
       python -m src.data_engineering.pipeline ingest
-      --catalog ${pipeline.catalog}
+      --source-csv ${pipeline.source_csv}
       --videos-dir ${pipeline.videos_dir}
       --url-column "${pipeline.url_column}"
       --label-column "${pipeline.label_column}"
     deps:
       - src
-      - ${pipeline.catalog}
+      - ${pipeline.source_csv}
     outs:
       - data/bronze/manifests/bronze_manifest.csv
       - ${pipeline.videos_dir}:
@@ -17,13 +17,13 @@ stages:
   build_silver_metadata:
     cmd: >-
       python -m src.data_engineering.pipeline preprocess
-      --catalog ${pipeline.catalog}
+      --manifest ${pipeline.manifest}
       --videos-dir ${pipeline.videos_dir}
       --metadata-dir ${pipeline.metadata_dir}
       --detect-every ${pipeline.detect_every}
     deps:
       - src
-      - ${pipeline.catalog}
+      - ${pipeline.manifest}
       - ${pipeline.videos_dir}
     outs:
       - ${pipeline.metadata_dir}:
@@ -34,14 +34,15 @@ stages:
   build_gold_dataset:
     cmd: >-
       python -m src.data_engineering.pipeline gold
-      --catalog ${pipeline.catalog}
+      --manifest ${pipeline.manifest}
       --videos-dir ${pipeline.videos_dir}
       --metadata-dir ${pipeline.metadata_dir}
       --groups ${pipeline.groups}
-      --generate-missing-metadata
+      --generate-missing-metadata ${pipeline.generate_missing_metadata}
+      --overwrite-metadata ${pipeline.overwrite_metadata}
     deps:
       - src
-      - ${pipeline.catalog}
+      - ${pipeline.manifest}
       - ${pipeline.videos_dir}
       - ${pipeline.metadata_dir}
     outs:
@@ -53,7 +54,11 @@ stages:
           persist: true
 
   validate_data_contracts:
-    cmd: python -m src.data_engineering.pipeline validate --report data/reports/pipeline_latest.json
+    cmd: >-
+      python -m src.data_engineering.pipeline validate
+      --report data/reports/pipeline_latest.json
+      --with-gx
+      --fail-on-error
     deps:
       - src
       - data/bronze/manifests/bronze_manifest.csv
@@ -61,6 +66,18 @@ stages:
       - data/silver/frame_features
       - data/silver/video_features
       - data/gold/gold_training_dataset.parquet
+    outs:
+      - data/reports/logs:
+          persist: true
     metrics:
+      - data/reports/metrics.json:
+          cache: false
       - data/reports/pipeline_latest.json:
           cache: false
+    plots:
+      - data/reports/plots/gold_distributions.csv:
+          x: label
+          y: count
+      - data/reports/plots/stage_counts.csv:
+          x: stage
+          y: value

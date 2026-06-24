@@ -6,9 +6,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = PROJECT_ROOT / "data"
+LAKE_LAYERS = ("bronze", "silver", "gold", "reports")
 
 
 @dataclass(frozen=True)
@@ -18,6 +21,7 @@ class MinIODVCSettings:
     secret_key: str
     bucket: str
     dvc_prefix: str
+    lake_prefix: str
     secure: bool
     remote_name: str
 
@@ -45,6 +49,7 @@ def load_settings() -> MinIODVCSettings:
         secret_key=os.getenv("MINIO_SECRET_KEY") or os.getenv("MINIO_ROOT_PASSWORD", "tccadmin123"),
         bucket=os.getenv("MINIO_BUCKET", "tcc-datalake"),
         dvc_prefix=os.getenv("MINIO_DVC_PREFIX", "dvc"),
+        lake_prefix=os.getenv("MINIO_LAKE_PREFIX", "lake"),
         secure=bool_from_env(os.getenv("MINIO_SECURE"), default=False),
         remote_name=os.getenv("DVC_REMOTE_NAME", "minio"),
     )
@@ -124,6 +129,66 @@ def dvc_pull() -> None:
     print_result(run(["dvc", "pull"]))
 
 
+def iter_lake_files(data_dir: str | Path = DATA_DIR, layers: Iterable[str] = LAKE_LAYERS) -> Iterable[Path]:
+    data_dir = Path(data_dir)
+    for layer in layers:
+        layer_dir = data_dir / layer
+        if not layer_dir.exists():
+            continue
+        for path in sorted(layer_dir.rglob("*")):
+            if path.is_file() and path.name != ".gitkeep":
+                yield path
+
+
+def lake_object_name(local_path: str | Path, data_dir: str | Path = DATA_DIR, prefix: str = "lake") -> str:
+    local_path = Path(local_path)
+    relative_path = local_path.relative_to(Path(data_dir))
+    clean_prefix = prefix.strip("/")
+    return f"{clean_prefix}/{relative_path.as_posix()}" if clean_prefix else relative_path.as_posix()
+
+
+def publish_lake(settings: MinIODVCSettings, data_dir: str | Path = DATA_DIR) -> int:
+    try:
+        from minio import Minio
+    except ImportError as exc:
+        raise SystemExit("MinIO client is not installed. Run: pip install -r requirements.txt") from exc
+
+    ensure_minio_bucket(settings)
+    client = Minio(
+        settings.endpoint,
+        access_key=settings.access_key,
+        secret_key=settings.secret_key,
+        secure=settings.secure,
+    )
+
+    uploaded = 0
+    for path in iter_lake_files(data_dir=data_dir):
+        object_name = lake_object_name(path, data_dir=data_dir, prefix=settings.lake_prefix)
+        client.fput_object(settings.bucket, object_name, str(path))
+        uploaded += 1
+        print(f"Uploaded {path} -> s3://{settings.bucket}/{object_name}")
+    print(f"Published {uploaded} lake files under s3://{settings.bucket}/{settings.lake_prefix.strip('/')}")
+    return uploaded
+
+
+def list_lake(settings: MinIODVCSettings) -> None:
+    try:
+        from minio import Minio
+    except ImportError as exc:
+        raise SystemExit("MinIO client is not installed. Run: pip install -r requirements.txt") from exc
+
+    client = Minio(
+        settings.endpoint,
+        access_key=settings.access_key,
+        secret_key=settings.secret_key,
+        secure=settings.secure,
+    )
+    prefix = settings.lake_prefix.strip("/")
+    objects = client.list_objects(settings.bucket, prefix=prefix, recursive=True)
+    for item in objects:
+        print(f"s3://{settings.bucket}/{item.object_name}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare local MinIO + DVC remote for the data lake pipeline.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -133,6 +198,8 @@ def main() -> None:
     subparsers.add_parser("check", help="Show DVC/remote diagnostics.")
     subparsers.add_parser("repro-push", help="Run dvc repro and dvc push.")
     subparsers.add_parser("pull", help="Run dvc pull.")
+    subparsers.add_parser("publish-lake", help="Upload data/ as a navigable lake organized by layer.")
+    subparsers.add_parser("list-lake", help="List navigable lake objects in MinIO.")
     args = parser.parse_args()
 
     settings = load_settings()
@@ -150,6 +217,10 @@ def main() -> None:
         dvc_repro_push()
     elif args.command == "pull":
         dvc_pull()
+    elif args.command == "publish-lake":
+        publish_lake(settings)
+    elif args.command == "list-lake":
+        list_lake(settings)
     else:
         parser.error(f"Unknown command: {args.command}")
 

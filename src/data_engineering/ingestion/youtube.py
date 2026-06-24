@@ -32,9 +32,22 @@ def read_links(args_links: list[str], links_file: Path | None) -> list[str]:
     return list(dict.fromkeys(links))
 
 
-def read_source_csv(csv_path: str | Path, url_column: str = "Media", label_column: str = "Video Ground Truth") -> list[dict]:
+def normalize_source_csv_label(label: str | None) -> str:
+    value = (label or "").strip()
+    lowered = value.lower()
+    if lowered not in {"true", "false"}:
+        raise ValueError("Source CSV label must be true or false.")
+    return normalize_label(value)
+
+
+def read_source_csv(csv_path: str | Path, url_column: str = "link", label_column: str = "label") -> list[dict]:
     with Path(csv_path).open("r", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
+
+    if rows and url_column not in rows[0]:
+        raise ValueError(f"Source CSV must contain the URL column: {url_column}")
+    if rows and label_column not in rows[0]:
+        raise ValueError(f"Source CSV must contain the label column: {label_column}")
 
     records = []
     for row in rows:
@@ -44,7 +57,7 @@ def read_source_csv(csv_path: str | Path, url_column: str = "Media", label_colum
         records.append(
             {
                 "source_url": source_url,
-                "label": (row.get(label_column) or "").strip(),
+                "label": normalize_source_csv_label(row.get(label_column)),
                 "source_type": "youtube",
             }
         )
@@ -175,15 +188,46 @@ def download_youtube_video(url: str, output_dir: str | Path = BRONZE_VIDEOS_DIR)
     }
 
 
-def append_manifest(rows: list[dict], manifest_path: str | Path) -> Path:
+def manifest_fieldnames() -> list[str]:
+    return list(BRONZE_MANIFEST_COLUMNS) + ["title", "duration", "uploader", "webpage_url"]
+
+
+def manifest_row_key(row: dict) -> str:
+    return row.get("source_url") or row.get("video_id") or row.get("filename") or ""
+
+
+def merge_manifest_rows(existing_rows: list[dict], new_rows: list[dict]) -> list[dict]:
+    merged: dict[str, dict] = {}
+    order: list[str] = []
+
+    for row in existing_rows:
+        key = manifest_row_key(row)
+        if not key:
+            continue
+        merged[key] = row
+        order.append(key)
+
+    for row in new_rows:
+        key = manifest_row_key(row)
+        if not key:
+            continue
+        existing = merged.get(key)
+        if existing and row.get("status") == "skipped" and existing.get("status") in {"downloaded", "skipped"}:
+            continue
+        if key not in merged:
+            order.append(key)
+        merged[key] = row
+
+    return [merged[key] for key in order if key in merged]
+
+
+def write_manifest(rows: list[dict], manifest_path: str | Path) -> Path:
     manifest_path = Path(manifest_path)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = list(BRONZE_MANIFEST_COLUMNS) + ["title", "duration", "uploader", "webpage_url"]
-    exists = manifest_path.exists()
-    with manifest_path.open("a", newline="", encoding="utf-8") as f:
+    fieldnames = manifest_fieldnames()
+    with manifest_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not exists:
-            writer.writeheader()
+        writer.writeheader()
         for row in rows:
             writer.writerow({key: row.get(key, "") for key in fieldnames})
     return manifest_path
@@ -245,7 +289,7 @@ def ingest_records(
         row["label"] = record.get("label", "")
         row["source_type"] = record.get("source_type", row.get("source_type", "youtube"))
         rows.append(row)
-    append_manifest(rows, manifest_path)
+    write_manifest(merge_manifest_rows(existing_manifest, rows), manifest_path)
     return rows
 
 
@@ -253,9 +297,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest YouTube videos into the local Bronze layer.")
     parser.add_argument("links", nargs="*", help="YouTube URLs.")
     parser.add_argument("--links-file", type=Path, help="Text file with one URL per line.")
-    parser.add_argument("--source-csv", type=Path, help="CSV dataset with a YouTube URL column.")
-    parser.add_argument("--url-column", default="Media", help="Column containing YouTube links in --source-csv.")
-    parser.add_argument("--label-column", default="Video Ground Truth", help="Column containing labels in --source-csv.")
+    parser.add_argument("--source-csv", type=Path, help="CSV dataset with link,label columns.")
+    parser.add_argument("--url-column", default="link", help="Column containing YouTube links in --source-csv.")
+    parser.add_argument("--label-column", default="label", help="Column containing true/false labels in --source-csv.")
     parser.add_argument("--output-dir", type=Path, default=BRONZE_VIDEOS_DIR)
     parser.add_argument("--manifest", type=Path, default=BRONZE_MANIFEST_PATH)
     parser.add_argument("--label", choices=["Real", "Fake"], help="Optional label for supervised ingestion.")
