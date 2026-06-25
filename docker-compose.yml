@@ -6,8 +6,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-tccadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-tccadmin123}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin123}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tcc-data-pipeline:local
+    image: data-pipeline:local
     profiles:
       - pipeline
     working_dir: /app

@@ -20,7 +20,7 @@ def _result_to_dict(result: Any) -> dict:
 def _expectations_for_contract(gx, contract_name: str, columns: list[str]) -> list[Any]:
     contract = CONTRACTS[contract_name]
     expectations = [
-        gx.expectations.ExpectTableColumnsToContainSet(column_set=list(contract.required_columns)),
+        gx.expectations.ExpectTableColumnsToMatchSet(column_set=list(contract.required_columns), exact_match=False),
     ]
 
     for column, accepted_values in (contract.accepted_values or {}).items():

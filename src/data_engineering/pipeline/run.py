@@ -205,6 +205,7 @@ def run_build(args: argparse.Namespace) -> dict:
             source_csv=args.source_csv,
             url_column=args.url_column,
             label_column=args.label_column,
+            manifest_path=args.manifest,
             limit=args.limit,
             run_id=run_id,
         )
@@ -255,6 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ingest = subparsers.add_parser("ingest", parents=[runtime_paths], help="Build/update Bronze videos and manifest.")
     ingest.add_argument("--source-csv", "--catalog", dest="source_csv", type=Path, default=VIDEO_CATALOG_PATH)
+    ingest.add_argument("--manifest", type=Path, default=BRONZE_MANIFEST_PATH)
     ingest.add_argument("--url-column", default="link")
     ingest.add_argument("--label-column", default="label")
     ingest.add_argument("--run-id")
@@ -318,6 +320,7 @@ def main() -> None:
             args.url_column,
             args.label_column,
             output_dir=args.videos_dir,
+            manifest_path=args.manifest,
             limit=args.limit,
             run_id=args.run_id,
         )

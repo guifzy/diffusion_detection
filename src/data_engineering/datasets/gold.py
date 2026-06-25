@@ -26,6 +26,18 @@ from src.data_engineering.preprocessing import extract_face_metadata
 logger = logging.getLogger(__name__)
 
 
+GOLD_GOVERNANCE_DEFAULTS = {
+    "video_id": "",
+    "label": "",
+    "n_frames": 0,
+    "metadata_rows_used": 0,
+    "feature_groups_used": "",
+    "aggregated_at": "",
+    "pipeline_version": PIPELINE_VERSION,
+    "missing_feature_ratio": 1.0,
+}
+
+
 def _manifest_rows(manifest_path: str | Path, videos_dir: str | Path) -> pd.DataFrame:
     manifest = pd.read_csv(manifest_path)
     if "storage_path" not in manifest.columns and "filename" not in manifest.columns:
@@ -112,7 +124,7 @@ def build_gold_dataset(
     silver_saved_path = write_dataframe(silver_video_features, silver_output_path, index=False)
     logger.info("Saved Silver video features with %s rows to %s", len(silver_video_features), silver_saved_path)
 
-    gold_dataset = silver_video_features.copy()
+    gold_dataset = ensure_gold_governance_columns(silver_video_features.copy())
     if not gold_dataset.empty:
         gold_dataset["target_label"] = gold_dataset["label"]
         gold_dataset["quality_flag"] = gold_dataset.apply(
@@ -134,6 +146,13 @@ def build_gold_dataset(
     saved_path = write_dataframe(gold_dataset, output_path, index=False)
     logger.info("Saved Gold training dataset with %s rows to %s", len(gold_dataset), saved_path)
     return gold_dataset
+
+
+def ensure_gold_governance_columns(df: pd.DataFrame) -> pd.DataFrame:
+    for column, default in GOLD_GOVERNANCE_DEFAULTS.items():
+        if column not in df.columns:
+            df[column] = default
+    return df
 
 
 def _quality_flag(row: pd.Series, missing_feature_threshold: float = 0.5) -> str:

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
+
+os.environ.setdefault("DO_NOT_TRACK", "1")
+os.environ.setdefault("PREFECT_SERVER_ANALYTICS_ENABLED", "false")
 
 try:
     from prefect import flow, task

@@ -1,459 +1,751 @@
 # Pipeline de Engenharia de Dados para Detecção de Vídeos Gerados por IA
 
----
+Este documento descreve a versão atual e funcional do pipeline de engenharia de dados do projeto. 
 
-# Descrição do Projeto
+## Visão Geral
 
-## Nome do projeto e contexto
+O objetivo da engenharia de dados aqui é transformar vídeos brutos em um dataset confiável para servir o treinamento e inferência do modelo, mantendo rastreabilidade, validação, reprodutibilidade e organização por camadas.
 
-Este projeto propõe o desenvolvimento de um pipeline de engenharia de dados para suportar a detecção de vídeos gerados por inteligência artificial (deepfakes). O aumento da produção de conteúdo sintético tem gerado desafios relacionados à autenticidade de mídia, segurança digital e disseminação de desinformação.
-
-## Problema e objetivos
-
-Atualmente, os dados utilizados no projeto apresentam limitações importantes:
-
-- Armazenamento não estruturado
-- Ausência de versionamento de dados
-- Falta de automação no pipeline
-- Baixa reprodutibilidade
-- Ausência de monitoramento e validação de dados
-
-### Objetivos principais:
-
-- Automatizar a ingestão incremental de vídeos
-- Estruturar um Data Lake com arquitetura em camadas
-- Padronizar o processamento de vídeos e extração de métricas
-- Garantir reprodutibilidade com versionamento de dados
-- Implementar validação contínua de dados
-- Disponibilizar datasets confiáveis para Machine Learning
-
----
-
-# Definição e Classificação dos Dados
-
-## Classificação dos dados
-
-### Dados operacionais (Batch)
-
-- Vídeos (.mp4)
-- Metadados (.json, .csv)
-- Métricas (.parquet)
-
-**Características:**
-
-- Processamento offline
-- Alto volume de dados
-- Reprocessáveis
-
-### Dados de streaming
-
-- Logs de execução do pipeline
-- Eventos de execução (ex: início/fim de tarefas)
-
-**Características:**
-
-- Baixa latência
-- Uso para monitoramento
-
-## Detalhamento das fontes
-
-| Fonte     | Origem         | Formato   | Periodicidade | Latência |
-| --------- | -------------- | --------- | ------------- | --------- |
-| Vídeos   | YouTube        | MP4       | Incremental   | Alta      |
-| Metadados | Scripts Python | JSON/CSV  | Batch         | Média    |
-| Métricas | OpenCV         | Parquet   | Batch         | Alta      |
-| Logs      | Prefect/Docker | JSON/Text | Contínuo     | Baixa     |
-
----
-
-# Domínios e Serviços
-
-## Domínios
-
-### 1. Ingestão de Dados
-
-- Download de vídeos
-- Geração de metadados
-
-### 2. Processamento de Vídeo
-
-- Padronização de vídeos
-- Extração de frames
-- Segmentação de regiões
-
-### 3. Extração de Métricas
-
-- Cálculo de features (LBP, FFT, Sobel)
-
-### 4. Armazenamento e Governança
-
-- Organização em Data Lake
-- Versionamento de dados
-
-### 5. Consumo de Dados
-
-- Dataset final para ML
-- Análise exploratória
-
-### 6. Monitoramento e Qualidade
-
-- Validação de dados
-- Logs e execução
-
-## Diagrama de domínios
-
-```mermaid
-flowchart LR
-    A[Ingestão] --> B[Processamento]
-    B --> C[Métricas]
-    C --> D[Armazenamento]
-    D --> E[Consumo]
-    D --> F[Monitoramento]
-```
-
----
-
-# Arquitetura — O que será feito (Fluxo de Dados)
-
-## Fluxo ponta a ponta
-
-```mermaid
-flowchart LR
-    A[CSV de fontes / upload] --> B[Bronze: videos e manifestos]
-    B --> C[Silver: metadata facial]
-    C --> D[Silver: features por frame]
-    D --> E[Silver: features por video]
-    E --> F[Gold: dataset de treinamento]
-    E --> G[Serving: payload de predicao]
-```
-
-## Integração das tecnologias
-
-* Prefect agenda execução do pipeline e validação
-* DVC reprodiz o pipeline e versiona os dados
-* MinIO armazena os dados em camadas para cada etapa
-* CI/CD valida o pipeline e versiona o codigo
-* Great Expectations e Pytest garante qualidade dos dados durante a validação
-
----
-
-## Caminhos batch e streaming
-
-### Batch (principal)
-
-* Ingestão de vídeos
-* Processamento
-* Extração de métricas
-* Construção do dataset
-
-### Streaming (secundário)
-
-* Logs de execução
-* Eventos do pipeline
-
----
-
-## Tipo de arquitetura
-
-Arquitetura adotada: **Lakehouse com padrão Medalhão**
-
-* **Bronze:** dados brutos
-* **Silver:** dados processados
-* **Gold:** dados prontos para consumo
-
-### Justificativa
-
-* Separação clara de camadas
-* Facilita reprocessamento
-* Reduz acoplamento
-* Eficiênte para pipelines de Machine Learning
-
-## Trade-offs
-
-### Vantagens
-
-* Alta reprodutibilidade com DVC
-* Escalabilidade com MinIO
-* Organização clara dos dados
-* Monitoramento contínuo
-
-### Desvantagens
-
-* Processamento batch (alta latência)
-* Alto custo computacional
-* Execução local limitada
-
----
-
-# Tecnologias — Como será feito
-
-## Ingestão
-
-* Python (yt-dlp)
-
-> Solução simples e eficiente para coleta de vídeos, integrada ao pipeline existente.
-
-## Armazenamento
-
-* MinIO (Data Lake S3-like)
-
-> * Armazenamento escalável
-> * Compatível com ferramentas modernas
-> * Ideal para arquivos grandes
-
-## Processamento e transformação
-
-* Python (OpenCV, pandas, numpy)
-* Parquet para dados estruturados
-
-> * Alto desempenho
-> * Integração com pipeline existente
-> * Eficiência na leitura/escrita
-
-## Orquestração
-
-* Prefect
-
-> * Agenda execuções periódicas
-> * Orquestra o pipeline completo
-> * Executa o comando `dvc repro`
-> * Executa os testes do pipeline
-
-## Versionamento e execução do pipeline
-
-* DVC
-
-> * Define o pipeline de dados
-> * Executa etapas de forma incremental
-> * Versiona datasets
-> * Garante reprodutibilidade
-
-## CI/CD
-
-* GitHub Actions
-
-> * Executa pipeline com dvc
-> * Valida código e dados para garantir que não terá quebra na produção
-> * Versiona o código
-
-## Monitoramento e qualidade de dados
-
-* Great Expectations
-* Logging (Python)
-* Pytest
-* Prefect logs
-
-> * Validação contínua dos dados
-> * Detecção de inconsistências
-> * Aumento da confiabilidade
-
-## Consumo de dados
-
-* Jupyter Notebook para experimentação
-* Modelagem final
-* Metabase
-
-> * Análise exploratória
-> * Visualização de dados
-> * Criação de modelos com reprodutibilidade
-
----
-
-# Considerações Finais
-
-## Riscos e limitações
-
-* Crescimento do volume de dados
-* Alto consumo de CPU
-* Dependência de qualidade dos dados de entrada
-
----
-
-# Implementação inicial local
-
-Esta etapa transforma a arquitetura em scripts reaproveitáveis para duas trilhas:
-
-* **trilha de engenharia de dados/treinamento**: processa vários vídeos e cria o dataset Gold local;
-* **trilha de produção/backend**: recebe um vídeo, gera metadados, extrai sinais e devolve features prontas para o modelo.
-
-## Camadas locais atuais
-
-* **Bronze local**: `data/bronze/videos/`
-* **Manifestos Bronze**: `data/bronze/manifests/`
-* **Metadados faciais auxiliares**: `data/silver/face_metadata_json/*_meta.json`
-* **Silver local estruturado**: `data/silver/face_metadata/`, `data/silver/frame_features/` e `data/silver/video_features/`
-* **Gold local**: `data/gold/gold_training_dataset.parquet` ou `.csv` quando o ambiente ainda não possui engine Parquet
-* **Contratos oficiais**: `data/docs/contracts.md`
-
-## Organização atual da pasta `data/`
+Fluxo principal:
 
 ```text
-data/
-  README.md
-  docs/
-    contracts.md
-  bronze/
-    videos/
-    manifests/
-      video-metadata-publish-with-links.csv
-      bronze_manifest.csv
-  silver/
-    face_metadata_json/
-    face_metadata/
-    frame_features/
-    video_features/
-  gold/
-    gold_training_dataset.parquet
+CSV link,label
+-> Bronze: videos e manifesto de ingestão
+-> Silver: metadata facial
+-> Silver: features por frame
+-> Silver: features por vídeo
+-> Gold: dataset oficial de treinamento
+-> Reports: qualidade, métricas, plots e logs
+-> MinIO: cache DVC versionado e lake navegável
 ```
 
-`face_metadata_json` existe porque o extrator atual ainda consome o JSON com `bbox` e `bbox_expanded`. A saída oficial tabular da camada Silver é `silver/face_metadata`, alinhada ao contrato `frame_metadata`.
+Arquitetura operacional:
 
-## Scripts criados
+![Arquitetura do pipeline](img/Ingestão.jpg)
 
-### Execução reprodutível com DVC e Prefect
+Lake navegável no MinIO:
 
-O pipeline local foi organizado para ser executado de duas formas:
+![Lake navegável no MinIO](img/image.png)
 
-* **DVC**: executor reprodutível das etapas de dados (`ingest`, `preprocess`, `gold`, `validate`) via `dvc.yaml`.
-* **Prefect**: orquestrador periódico futuro, chamando `dvc repro` e coletando logs/relatórios.
+## Decisão Arquitetural
 
-O ponto de entrada comum é:
+A arquitetura adotada é uma Lakehouse local com padrão medalhão:
 
-```bash
-python -m src.data_engineering.pipeline <comando>
+- **Bronze**: entrada bruta e manifesto oficial de ingestão.
+- **Silver**: dados processados, metadata facial e features.
+- **Gold**: dataset final para treino.
+- **Reports**: observabilidade, qualidade e auditoria.
+
+O repositório roda localmente, mas já foi desenhado para evoluir para armazenamento S3-like com MinIO e execução periódica com Prefect.
+
+## Tecnologias
+
+| Tecnologia | Função no projeto |
+|---|---|
+| Python | Implementação dos pipelines e dos extratores |
+| yt-dlp | Download dos vídeos de entrada |
+| OpenCV | Leitura de frames e processamento visual |
+| RetinaFace | Detecção facial para metadata Silver |
+| pandas / pyarrow | Tabelas CSV/Parquet |
+| DVC | Execução reprodutível e versionamento de dados |
+| MinIO | Storage S3-like local |
+| Prefect | Orquestração periódica do pipeline |
+| Great Expectations | Validação formal dos contratos |
+| Pytest | Testes de integridade |
+| Docker Compose | MinIO e ambiente reprodutível do pipeline |
+
+CI/CD está fora do escopo desta etapa, mas a estrutura atual já deixa o projeto pronto para receber GitHub Actions posteriormente.
+
+## Organização Do Repositório
+
+```text
+.
+├── data/
+│   ├── bronze/
+│   │   ├── manifests/
+│   │   │   ├── video-metadata-publish-with-links.csv
+│   │   │   └── bronze_manifest.csv
+│   │   └── videos/
+│   ├── silver/
+│   │   ├── face_metadata_json/
+│   │   ├── face_metadata/
+│   │   ├── frame_features/
+│   │   └── video_features/
+│   ├── gold/
+│   │   └── gold_training_dataset.parquet
+│   └── reports/
+│       ├── pipeline_latest.json
+│       ├── metrics.json
+│       ├── logs/
+│       └── plots/
+├── docs/
+│   ├── README.md
+│   ├── contracts.md
+│   ├── minio_dvc_local.md
+│   └── img/
+├── src/
+│   ├── shared/
+│   ├── data_engineering/
+│   ├── ml/
+│   └── api/
+├── tests/
+├── docker-compose.yml
+├── Dockerfile
+├── dvc.yaml
+├── params.yaml
+├── requirements.txt
+└── .env.example
 ```
 
-Exemplo local ponta a ponta:
+## Contratos De Dados
 
-```bash
-python -m src.data_engineering.pipeline build --groups abcde --generate-missing-metadata
+
+Contratos atuais:
+
+| Contrato | Camada | Grão | Função |
+|---|---|---|---|
+| `bronze_source_csv` | Entrada Bronze | uma linha por link | Fonte mínima com `link,label` |
+| `bronze_manifest` | Bronze | uma linha por vídeo | Registro oficial de ingestão |
+| `frame_metadata` | Silver | uma linha por frame | Metadata facial e origem da bbox |
+| `frame_features` | Silver | uma linha por frame | Sinais A-E por frame |
+| `video_features` | Silver | uma linha por vídeo | Agregações por vídeo |
+| `gold_training_dataset` | Gold | uma linha por vídeo | Dataset pronto para treino |
+| `prediction_payload` | Serving | uma resposta por vídeo | Contrato futuro da API |
+
+### CSV De Entrada Bronze
+
+O CSV externo usado para ingestão deve conter apenas:
+
+```csv
+link,label
+https://www.youtube.com/shorts/4cwcSCQH8HE,false
 ```
 
-Exemplo da trilha final planejada:
+Regras:
+
+- `label=true` vira `Real`;
+- `label=false` vira `Fake`;
+- o CSV bruto não precisa ter `video_id`, `filename`, hash ou path;
+- essas informações são derivadas pela ingestão e registradas no manifesto Bronze.
+
+Arquivo padrão:
+
+```text
+data/bronze/manifests/video-metadata-publish-with-links.csv
+```
+
+Arquivo de smoke test usado na validação local:
+
+```text
+data/bronze/manifests/smoke_source.csv
+```
+
+## Camadas Do Pipeline
+
+### Bronze
+
+Responsável por receber links, baixar vídeos e registrar a ingestão.
+
+Entradas:
+
+```text
+data/bronze/manifests/video-metadata-publish-with-links.csv
+```
+
+ou, para smoke test:
+
+```text
+data/bronze/manifests/smoke_source.csv
+```
+
+Saídas:
+
+```text
+data/bronze/videos/*.mp4
+data/bronze/manifests/bronze_manifest.csv
+```
+
+O `bronze_manifest.csv` é a fonte de verdade para as etapas seguintes.
+
+Campos principais:
+
+```text
+video_id
+source_url
+filename
+storage_path
+sha256
+downloaded_at
+label
+status
+error_message
+source_type
+```
+
+Status aceitos:
+
+```text
+pending
+downloaded
+failed
+skipped
+```
+
+### Silver Metadata
+
+Responsável por abrir os vídeos, detectar faces e salvar a metadata facial por frame.
+
+Saídas:
+
+```text
+data/silver/face_metadata_json/{video_id}_meta.json
+data/silver/face_metadata/{video_id}.parquet
+```
+
+Campos principais:
+
+```text
+video_id
+frame_id
+bbox_x1, bbox_y1, bbox_x2, bbox_y2
+bbox_expanded_x1, bbox_expanded_y1, bbox_expanded_x2, bbox_expanded_y2
+source
+detector_score
+frame_width
+frame_height
+processed_at
+pipeline_version
+```
+
+O campo `source` explica de onde veio a bbox:
+
+```text
+detector
+tracker
+last_bbox
+fallback_center
+```
+
+Isso permite medir se o pipeline realmente conseguiu detectar faces ou se usou fallback demais.
+
+### Silver Features
+
+Responsável por extrair os sinais dos grupos A-E.
+
+Saídas:
+
+```text
+data/silver/frame_features/{video_id}.parquet
+data/silver/video_features/video_features.parquet
+```
+
+Grupos atuais:
+
+| Grupo | Tema | Exemplos de sinais |
+|---|---|---|
+| A | Textura | LBP, Sobel, Laplacian, entropia |
+| B | Estrutura | SIFT, patch similarity |
+| C | Ruído | residual noise, energia, variância |
+| D | Frequência | FFT, simetria, anisotropia |
+| E | Física | iluminação, assimetria facial, reflexos planejados |
+
+A extração centralizada fica em:
+
+```text
+src/shared/features/extractor.py
+```
+
+### Gold
+
+Responsável por gerar o dataset oficial para treinamento.
+
+Saída:
+
+```text
+data/gold/gold_training_dataset.parquet
+```
+
+Campos de governança:
+
+```text
+video_id
+target_label
+dataset_split
+is_trainable
+quality_flag
+missing_feature_ratio
+pipeline_version
+```
+
+Critérios mínimos para `is_trainable=True`:
+
+- `target_label` em `Real/Fake`;
+- `n_frames > 0`;
+- `metadata_rows_used > 0`;
+- `missing_feature_ratio` aceitável;
+- `quality_flag == ok`.
+
+
+### Reports
+
+Responsável por auditoria, métricas e validação.
+
+Saídas:
+
+```text
+data/reports/pipeline_latest.json
+data/reports/metrics.json
+data/reports/logs/pipeline_YYYYMMDD.jsonl
+data/reports/plots/gold_distributions.csv
+data/reports/plots/stage_counts.csv
+```
+
+O relatório principal informa:
+
+- quantidade de vídeos no Bronze;
+- downloads concluídos;
+- falhas;
+- cobertura facial;
+- fallback ratio;
+- features processadas;
+- missing feature ratio;
+- quantidade de linhas Gold;
+- quantidade de linhas treináveis;
+- distribuição Real/Fake;
+- status dos contratos;
+- status do Great Expectations;
+- erros bloqueantes.
+
+Exemplo de resultado esperado:
+
+```text
+status = passed
+blocking_errors = []
+contracts = passed
+great_expectations = passed
+gold.trainable_rows = 1
+```
+
+## DVC, MinIO e Lake Navegável
+
+O projeto usa a seguinte estratégia:
+
+```text
+pipeline escreve localmente em data/
+DVC versiona os outputs locais
+dvc push envia o cache versionado para MinIO
+publish-lake publica uma cópia navegável por camadas
+```
+
+### DVC
+
+O DVC é o executor reprodutível e versionador dos dados.
+
+Arquivos principais:
+
+```text
+dvc.yaml
+dvc.lock
+params.yaml
+```
+
+Stages atuais:
+
+```text
+ingest_bronze
+build_silver_metadata
+build_gold_dataset
+validate_data_contracts
+```
+
+Comando principal:
 
 ```bash
 dvc repro
 ```
 
-Em produção, um flow Prefect deve agendar `dvc repro`, monitorar falhas e publicar o relatório de `data/reports/pipeline_latest.json`.
+Isso executa:
 
-O passo a passo local para MinIO como remote DVC está em `docs/minio_dvc_local.md`.
+```text
+Bronze -> Silver metadata -> Silver features/Gold -> validação
+```
 
-O Docker agora cobre dois serviços:
+Depois:
 
-* `minio`: armazenamento S3 local.
-* `data-pipeline`: ambiente reprodutível Python/DVC para executar testes, `dvc repro` e `dvc push`.
+```bash
+dvc push
+```
 
-Execução containerizada:
+O `dvc push` envia os arquivos reais para o MinIO, mas em formato de cache versionado por hash:
+
+```text
+s3://<bucket>/dvc/files/md5/...
+```
+
+Esse formato não é feito para navegação humana. Ele é feito para reprodutibilidade.
+
+### Utilidade Das Versões De Dados
+
+O DVC permite responder:
+
+- qual versão do Gold treinou determinado modelo;
+- quais vídeos entraram nessa versão;
+- quais parâmetros foram usados;
+- quais hashes representam cada output;
+- como restaurar exatamente o mesmo dataset em outra máquina.
+
+Fluxo futuro para treino:
+
+```bash
+git pull
+dvc pull
+python -m src.ml.train
+```
+
+O `dvc pull` lê o `dvc.lock` e restaura exatamente os arquivos esperados em `data/`.
+
+### Lake Navegável
+
+O lake navegável é uma cópia legível para humanos e auditoria.
+
+Comandos:
+
+```bash
+python -m src.data_engineering.infra publish-lake
+python -m src.data_engineering.infra list-lake
+```
+
+Estrutura criada no MinIO:
+
+```text
+s3://<bucket>/lake/bronze/...
+s3://<bucket>/lake/silver/...
+s3://<bucket>/lake/gold/...
+s3://<bucket>/lake/reports/...
+```
+
+## MinIO
+
+O MinIO roda via Docker Compose.
+
+Subir serviço:
+
+```bash
+docker compose up -d minio
+```
+
+Console:
+
+```text
+http://localhost:9001
+```
+
+Usuário e senha padrão local:
+
+```text
+admin / admin123
+```
+
+As variáveis ficam em:
+
+```text
+.env
+.env.example
+```
+
+Exemplo:
+
+```env
+MINIO_ROOT_USER=admin
+MINIO_ROOT_PASSWORD=admin123
+MINIO_ENDPOINT=localhost:9000
+MINIO_CONSOLE=http://localhost:9001
+MINIO_ACCESS_KEY=admin
+MINIO_SECRET_KEY=admin123
+MINIO_BUCKET=tcc-datalake
+MINIO_DVC_PREFIX=dvc
+MINIO_LAKE_PREFIX=lake
+MINIO_SECURE=false
+DVC_REMOTE_NAME=minio
+```
+
+## Prefect
+
+O Prefect é a camada de orquestração periódica.
+
+Hoje o flow executa:
+
+```text
+dvc repro
+dvc metrics show
+dvc push
+python -m src.data_engineering.infra publish-lake
+python -m src.data_engineering.infra list-lake
+```
+
+Execução única:
+
+```bash
+python -m src.data_engineering.orchestration.prefect_flow run
+```
+
+Execução única sem push:
+
+```bash
+python -m src.data_engineering.orchestration.prefect_flow run --no-push
+```
+
+Execução agendada local:
+
+```bash
+python -m src.data_engineering.orchestration.prefect_flow serve --interval-seconds 86400
+```
+
+Ou com cron:
+
+```bash
+python -m src.data_engineering.orchestration.prefect_flow serve --cron "0 3 * * *"
+```
+
+## Docker
+
+O Docker Compose define dois serviços:
+
+```text
+minio
+data-pipeline
+```
+
+`minio` é o storage S3 local.
+
+`data-pipeline` é um ambiente reprodutível com Python, DVC, dependências do pipeline e acesso ao MinIO.
+
+Build:
 
 ```bash
 docker compose --profile pipeline build data-pipeline
-docker compose --profile pipeline run --rm data-pipeline python -m src.data_engineering.infra init
+```
+
+Testes no container:
+
+```bash
+docker compose --profile pipeline run --rm data-pipeline python -m pytest tests -q
+```
+
+DVC no container:
+
+```bash
 docker compose --profile pipeline run --rm data-pipeline dvc repro
 docker compose --profile pipeline run --rm data-pipeline dvc push
 ```
 
-### Ingestão YouTube para Bronze
+Publicar lake no container:
 
 ```bash
-python -m src.data_engineering.ingestion "https://www.youtube.com/watch?v=..."
+docker compose --profile pipeline run --rm data-pipeline \
+  python -m src.data_engineering.infra publish-lake
 ```
 
-Também aceita arquivo de links:
-
-```bash
-python -m src.data_engineering.ingestion --links-file links.txt --label Fake
-```
-
-Para executar a ingestao a partir de um CSV com links:
-
-```bash
-python -m src.data_engineering.ingestion --source-csv data/bronze/manifests/video-metadata-publish-with-links.csv
-```
-
-Esse CSV deve conter apenas `link,label`, onde `label=true` representa Real e `label=false` representa Fake. O script baixa vídeos com `yt-dlp` em `data/bronze/videos/` e registra `data/bronze/manifests/bronze_manifest.csv`, seguindo o contrato `bronze_manifest`.
-
-### Pré-processamento facial
-
-```bash
-python -m src.data_engineering.preprocessing --video data/bronze/videos/exemplo.mp4
-```
-
-Gera `data/silver/face_metadata_json/exemplo_meta.json` com `frame_id`, `bbox`, `bbox_expanded`, `source` e `detector_score`.
-
-Tambem materializa a metadata tabular em `data/silver/face_metadata/`, seguindo o contrato `frame_metadata`.
-
-### Pipeline de produção para um vídeo
-
-```bash
-python -m src.api data/bronze/videos/exemplo.mp4 --groups abcde --json
-```
-
-Esta é a base para o backend da aplicação final. O fluxo executado é:
+Diferença de endpoint:
 
 ```text
-video -> metadata facial -> features frame-level A-E -> features video-level -> entrada do modelo
+WSL/host: localhost:9000
+container: minio:9000
 ```
 
-### Dataset Gold local para treinamento
+O `docker-compose.yml` já faz esse override no serviço `data-pipeline`.
+
+## Testes E Validações
+
+### Testes Pytest
 
 ```bash
-python -m src.data_engineering.datasets --groups abcde --generate-missing-metadata
+python -m pytest tests -q
 ```
 
-O script lê `data/bronze/manifests/bronze_manifest.csv`, procura vídeos em `data/bronze/videos/`, garante metadados quando solicitado e cria uma tabela Gold com uma linha por vídeo.
+Cobrem:
 
-Ele tambem materializa `data/silver/video_features/`, separando o ativo Silver tecnico do `gold_training_dataset`.
+- contrato do CSV Bronze;
+- normalização `true/false -> Real/Fake`;
+- leitura do manifesto Bronze para Gold;
+- splits Gold reprodutíveis;
+- mapeamento do lake MinIO;
+- integridade básica do DVC;
+- validação de contratos.
 
-## Módulos reutilizáveis
+### Validação Do Pipeline
 
-* `src/shared/video.py`: leitura amostrada de frames, bbox, regiões e metadata.
-* `src/shared/features/group_a.py`: LBP, Sobel e Laplacian.
-* `src/shared/features/group_b.py`: SIFT e Patch Similarity.
-* `src/shared/features/group_c.py`: ruído residual.
-* `src/shared/features/group_d.py`: FFT.
-* `src/shared/features/group_e.py`: física de iluminação.
-* `src/shared/features/extractor.py`: orquestra A-E e agrega features video-level.
-* `src/data_engineering/preprocessing/metadata.py`: extração de metadados faciais.
-* `src/data_engineering/datasets/gold.py`: trilha batch para Silver video features e Gold.
-* `src/api/services/video_analysis.py`: trilha de produção para um vídeo individual.
+```bash
+python -m src.data_engineering.pipeline validate \
+  --report data/reports/pipeline_latest.json \
+  --with-gx \
+  --fail-on-error
+```
 
-## Observação para produção
+`--fail-on-error` bloqueia a execução quando houver:
 
-O modelo final deve consumir as features geradas por `src.shared.features.extractor.build_video_features`. Essa função é o ponto de reaproveitamento entre treinamento e inferência, evitando divergência entre o dataset Gold e o backend da aplicação.
+- Bronze vazio;
+- contratos falhando;
+- Silver metadata vazia;
+- Silver features vazia;
+- Gold vazio;
+- Gold sem linhas treináveis;
+- `missing_feature_ratio` acima do limite;
+- `fallback_center_ratio` acima do limite.
 
-## Preparação para arquitetura madura
+### Métricas E Plots DVC
 
-O monorepo deve evoluir mantendo fronteiras claras:
+```bash
+dvc metrics show
+dvc plots show
+```
 
-* `src.data_engineering.pipeline`: comandos executáveis por CLI, DVC e Prefect.
-* `src.data_engineering.ingestion`: ingestão Bronze.
-* `src.data_engineering.preprocessing`: metadata facial Silver.
-* `src.data_engineering.datasets`: construção Silver/Gold para treinamento.
-* `src.shared.contracts`: contratos e validação de integridade.
-* `src.shared.storage`: fronteira local/MinIO.
-* `src.shared.features`: sinais A-E reaproveitados por treino e API.
-* `src.ml`: domínio futuro de treino, avaliação e registry de modelos.
-* `src.api`: trilha de produção para um vídeo individual.
-* `tests/`: testes Pytest de contratos, splits e integridade dos ativos.
-
-O armazenamento local em `data/` representa os buckets futuros do MinIO:
+Arquivos:
 
 ```text
-data/bronze   -> bucket/prefix bronze
-data/silver   -> bucket/prefix silver
-data/gold     -> bucket/prefix gold
-data/reports  -> bucket/prefix reports
+data/reports/metrics.json
+data/reports/plots/gold_distributions.csv
+data/reports/plots/stage_counts.csv
 ```
 
-Essa decisão permite apresentar o MVP local no TCC sem bloquear a migração para MinIO, CI com Pytest, API SaaS e execução periódica com Prefect.
-* Limitações de execução local
+## Cold Start Resumido
 
-## Referências
+Partindo de Docker instalado e conectado ao WSL:
 
-* [Documentação oficial do MinIO](https://docs.min.io/enterprise/aistor-object-store/)
-* [Documentação do Prefect](https://docs.prefect.io/v3/get-started)
-* [Documentação do DVC](https://doc.dvc.org)
-* [Documentação do GitHub Actions](https://docs.github.com/pt/actions)
-* [Documentação do Great Expectations](https://docs.greatexpectations.io/docs/home/)
-* [Documentação Pytest](https://docs-pytest-org.translate.goog/en/stable/?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=pt&_x_tr_pto=tc)
+```bash
+cd /home/guilherme_monteiro/projetos/tcc
+
+cp .env.example .env
+docker compose up -d minio
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+set -a
+source .env
+set +a
+
+python -m src.data_engineering.infra init
+python -m pytest tests -q
+dvc repro
+dvc metrics show
+dvc push
+python -m src.data_engineering.infra publish-lake
+python -m src.data_engineering.infra list-lake
+```
+
+## Smoke Test Com Um Vídeo
+
+Crie ou edite:
+
+```text
+data/bronze/manifests/smoke_source.csv
+```
+
+Conteúdo:
+
+```csv
+link,label
+https://www.youtube.com/shorts/4cwcSCQH8HE,false
+```
+
+Em `params.yaml`, use:
+
+```yaml
+pipeline:
+  source_csv: data/bronze/manifests/smoke_source.csv
+  manifest: data/bronze/manifests/bronze_manifest.csv
+  videos_dir: data/bronze/videos
+  metadata_dir: data/silver/face_metadata_json
+  groups: abcde
+  max_frames:
+  detect_every: 1
+  limit:
+  url_column: link
+  label_column: label
+  generate_missing_metadata: true
+  overwrite_metadata: false
+```
+
+Execute:
+
+```bash
+dvc repro
+```
+
+Resultado validado:
+
+```text
+Bronze: 1 vídeo baixado
+Silver metadata: 194 frames com face
+Silver features: 1 vídeo processado
+Gold: 1 linha treinável
+Contracts: passed
+Great Expectations: passed
+Pipeline status: passed
+```
+
+## Casos De Validação Obrigatórios
+
+Para demonstrar o pipeline completo:
+
+```bash
+# 1. Testes unitários/de integração
+python -m pytest tests -q
+
+# 2. Pipeline DVC
+dvc repro
+
+# 3. Métricas
+dvc metrics show
+
+# 4. Push versionado para MinIO
+dvc push
+
+# 5. Lake navegável
+python -m src.data_engineering.infra publish-lake
+python -m src.data_engineering.infra list-lake
+
+# 6. Prefect
+python -m src.data_engineering.orchestration.prefect_flow run
+
+# 7. Container
+docker compose --profile pipeline build data-pipeline
+docker compose --profile pipeline run --rm data-pipeline python -m pytest tests -q
+docker compose --profile pipeline run --rm data-pipeline dvc repro
+docker compose --profile pipeline run --rm data-pipeline dvc push
+```
+
+## Como Limpar Artefatos Locais
+
+Limpar outputs locais sem apagar CSVs de entrada:
+
+```bash
+rm -rf data/bronze/videos/*
+rm -f data/bronze/manifests/bronze_manifest.csv
+rm -rf data/silver/face_metadata_json/*
+rm -rf data/silver/face_metadata/*
+rm -rf data/silver/frame_features/*
+rm -rf data/silver/video_features/*
+rm -rf data/gold/*
+rm -rf data/reports/*
+```
+
+Limpar cache DVC local:
+
+```bash
+rm -rf .dvc/cache
+```
+
+Limpar MinIO local:
+
+```bash
+docker compose down
+docker volume ls
+docker volume rm tcc_minio_data
+```
+
+O nome do volume pode mudar caso `COMPOSE_PROJECT_NAME` tenha sido alterado.
+

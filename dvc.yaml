@@ -3,6 +3,7 @@ stages:
     cmd: >-
       python -m src.data_engineering.pipeline ingest
       --source-csv ${pipeline.source_csv}
+      --manifest ${pipeline.manifest}
       --videos-dir ${pipeline.videos_dir}
       --url-column "${pipeline.url_column}"
       --label-column "${pipeline.label_column}"

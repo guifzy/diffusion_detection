@@ -17,6 +17,8 @@ data/gold/*
 data/reports/*
 !data/reports/.gitkeep
 
+dvc_plots/
+
 output/laplacian/*
 output/lbp/*
 output/sobel/*
@@ -28,6 +30,7 @@ output/sobel/*
 __pycache__/
 **/__pycache__/
 *.pyc
+.pytest_cache/
 models/
 experimentos/grupo_a/__pycache__/experimentos_a.cpython-312.pyc
 

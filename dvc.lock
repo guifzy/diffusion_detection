@@ -1,0 +1,151 @@
+schema: '2.0'
+stages:
+  ingest_bronze:
+    cmd: python -m src.data_engineering.pipeline ingest --source-csv 
+      data/bronze/manifests/smoke_source.csv --manifest 
+      data/bronze/manifests/bronze_manifest.csv --videos-dir data/bronze/videos 
+      --url-column "link" --label-column "label"
+    deps:
+    - path: data/bronze/manifests/smoke_source.csv
+      hash: md5
+      md5: 495cab09a456d85daec7c15d7cf5d643
+      size: 59
+    - path: src
+      hash: md5
+      md5: f244e2328e76e28759c3425958142089.dir
+      size: 327221
+      nfiles: 96
+    outs:
+    - path: data/bronze/manifests/bronze_manifest.csv
+      hash: md5
+      md5: 7564b665690396dfce55f72745b8a260
+      size: 405
+    - path: data/bronze/videos
+      hash: md5
+      md5: a2723594e412e654e4db0affd28391b5.dir
+      size: 1537814
+      nfiles: 1
+  build_silver_metadata:
+    cmd: python -m src.data_engineering.pipeline preprocess --manifest 
+      data/bronze/manifests/bronze_manifest.csv --videos-dir data/bronze/videos 
+      --metadata-dir data/silver/face_metadata_json --detect-every 1
+    deps:
+    - path: data/bronze/manifests/bronze_manifest.csv
+      hash: md5
+      md5: 7564b665690396dfce55f72745b8a260
+      size: 405
+    - path: data/bronze/videos
+      hash: md5
+      md5: a2723594e412e654e4db0affd28391b5.dir
+      size: 1537814
+      nfiles: 1
+    - path: src
+      hash: md5
+      md5: f244e2328e76e28759c3425958142089.dir
+      size: 327221
+      nfiles: 96
+    outs:
+    - path: data/silver/face_metadata
+      hash: md5
+      md5: aa9ee0f5f5066a9e3e06e151a78c0a9c.dir
+      size: 14977
+      nfiles: 2
+    - path: data/silver/face_metadata_json
+      hash: md5
+      md5: 0ac2179795b9dbfd411965471d401389.dir
+      size: 573521
+      nfiles: 13
+  build_gold_dataset:
+    cmd: python -m src.data_engineering.pipeline gold --manifest 
+      data/bronze/manifests/bronze_manifest.csv --videos-dir data/bronze/videos 
+      --metadata-dir data/silver/face_metadata_json --groups abcde 
+      --generate-missing-metadata true --overwrite-metadata false
+    deps:
+    - path: data/bronze/manifests/bronze_manifest.csv
+      hash: md5
+      md5: 7564b665690396dfce55f72745b8a260
+      size: 405
+    - path: data/bronze/videos
+      hash: md5
+      md5: a2723594e412e654e4db0affd28391b5.dir
+      size: 1537814
+      nfiles: 1
+    - path: data/silver/face_metadata_json
+      hash: md5
+      md5: 0ac2179795b9dbfd411965471d401389.dir
+      size: 573521
+      nfiles: 13
+    - path: src
+      hash: md5
+      md5: 3fe72474f7855eac2898906f01323047.dir
+      size: 327592
+      nfiles: 96
+    outs:
+    - path: data/gold/gold_training_dataset.parquet
+      hash: md5
+      md5: 814f054f195dc25f913296820e46f4bd
+      size: 956916
+    - path: data/silver/frame_features
+      hash: md5
+      md5: 489d7184dd1154524ea969bd2fc60a69.dir
+      size: 909161
+      nfiles: 3
+    - path: data/silver/video_features
+      hash: md5
+      md5: 2cf98fa0c5136dff271e99e66f424a52.dir
+      size: 954815
+      nfiles: 1
+  validate_data_contracts:
+    cmd: python -m src.data_engineering.pipeline validate --report 
+      data/reports/pipeline_latest.json --with-gx --fail-on-error
+    deps:
+    - path: data/bronze/manifests/bronze_manifest.csv
+      hash: md5
+      md5: 7564b665690396dfce55f72745b8a260
+      size: 405
+    - path: data/gold/gold_training_dataset.parquet
+      hash: md5
+      md5: 814f054f195dc25f913296820e46f4bd
+      size: 956916
+    - path: data/silver/face_metadata
+      hash: md5
+      md5: aa9ee0f5f5066a9e3e06e151a78c0a9c.dir
+      size: 14977
+      nfiles: 2
+    - path: data/silver/frame_features
+      hash: md5
+      md5: 489d7184dd1154524ea969bd2fc60a69.dir
+      size: 909161
+      nfiles: 3
+    - path: data/silver/video_features
+      hash: md5
+      md5: 2cf98fa0c5136dff271e99e66f424a52.dir
+      size: 954815
+      nfiles: 1
+    - path: src
+      hash: md5
+      md5: 3fe72474f7855eac2898906f01323047.dir
+      size: 327592
+      nfiles: 96
+    outs:
+    - path: data/reports/logs
+      hash: md5
+      md5: 2b8128f56df1b420e4f505e21f663e46.dir
+      size: 4594
+      nfiles: 1
+    - path: data/reports/metrics.json
+      hash: md5
+      md5: 5e05535bd32f994ff615d88887de9792
+      size: 444
+    - path: data/reports/pipeline_latest.json
+      hash: md5
+      md5: c447d0e5d5fd0de5583ed5fa1c96f94d
+      size: 331507
+    - path: data/reports/plots/gold_distributions.csv
+      hash: md5
+      md5: 2fbabc2ca9ca2d5cc73cdec54ad9c6a1
+      size: 97
+    - path: data/reports/plots/stage_counts.csv
+      hash: md5
+      md5: 759e19833e067601030377fdd495de04
+      size: 163

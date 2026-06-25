@@ -87,13 +87,24 @@ def aggregate_video_features(
     values["n_frames"] = int(len(frame_features))
     if "metadata_idx" in frame_features.columns:
         values["metadata_rows_used"] = int(frame_features["metadata_idx"].nunique())
+    else:
+        values["metadata_rows_used"] = 0
     values["feature_groups_used"] = groups_to_string(groups)
     values["aggregated_at"] = datetime.now(timezone.utc).isoformat()
     values["pipeline_version"] = PIPELINE_VERSION
     feature_values = {
         key: value
         for key, value in values.items()
-        if key not in {"video_id", "label", "feature_groups_used", "aggregated_at", "pipeline_version"}
+        if key
+        not in {
+            "video_id",
+            "label",
+            "n_frames",
+            "metadata_rows_used",
+            "feature_groups_used",
+            "aggregated_at",
+            "pipeline_version",
+        }
     }
     if feature_values:
         values["missing_feature_ratio"] = float(pd.Series(feature_values).isna().mean())

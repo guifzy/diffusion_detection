@@ -1,5 +1,5 @@
 pipeline:
-  source_csv: data/bronze/manifests/video-metadata-publish-with-links.csv
+  source_csv: data/bronze/manifests/smoke_source.csv
   manifest: data/bronze/manifests/bronze_manifest.csv
   videos_dir: data/bronze/videos
   metadata_dir: data/silver/face_metadata_json
