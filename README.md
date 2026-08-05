@@ -40,32 +40,31 @@ Foca na coerência geométrica e na organização espacial de detalhes.
 - **SIFT**: keypoints e descritores para estabilidade estrutural.
 - **Patch similarity (self-similarity)**: redundância local que pode indicar síntese.
 
-#### Grupo C - ruído
+#### Grupo C - resíduo de alta passagem
 
 Avalia assinaturas de ruído natural vs. ruído residual sintético.
 
-- **Residual noise**: componente de ruído após remoção de conteúdo estrutural.
-- **Energia do ruído**: intensidade total do ruído residual.
-- **Variância do ruído**: dispersão temporal/espacial do ruído.
+- **Resíduo bilateral**: baseline de alta passagem após suavização preservadora de bordas.
+- **Estatísticas robustas**: RMS, MAD, caudas e entropia do resíduo.
+- **Dependência espacial e cromática**: autocorrelação lag-1 e correlação entre canais.
 
 #### Grupo D - frequência (FFT)
 
 Observa distribuição espectral e simetrias no domínio da frequência.
 
-- **Energia central (DC)**: concentração de energia em baixas frequências.
-- **Energia nos eixos (cruz)**: distribuição em componentes horizontais/verticais.
-- **Simetria horizontal/vertical**: padrões especulares no espectro.
-- **Anisotropia**: direção preferencial da energia espectral.
-- **Entropia da FFT**: complexidade espectral global.
-- **Autocorrelação**: periodicidade e repetição de padrões espaciais.
+- **Razões de potência**: distribuição em baixas, médias e altas frequências.
+- **Centroide e inclinação radial**: posição e decaimento da energia espectral.
+- **Anisotropia angular**: direção preferencial da potência espectral.
+- **Entropia e planicidade**: dispersão da potência no espectro.
 
-#### Grupo E - física
+#### Grupo E - fotometria regional
 
 Procura inconsistências com o comportamento óptico esperado no mundo real.
 
-- **Iluminação**: coerência de sombras, contraste, saturação e distribuição de luz entre face, contorno e fundo.
-- **Assimetria facial de luminância**: diferenças esquerda/direita, topo/base e quadrantes da face.
-- **Reflexos oculares**: consistência de highlights e reflexões nos olhos (planejado; depende de landmarks).
+- **Fotometria**: luminância, contraste, crominância, saturação e campo suavizado entre regiões.
+- **Assimetria facial de luminância**: diferenças normalizadas entre lados e quadrantes.
+- **Candidatos de sombra**: iluminação Retinex em luminância linear, profundidade, borda e cromaticidade.
+- **Reflexos oculares**: planejados; não fazem parte da versão atual.
 
 #### Grupo F - robustez (planejado)
 
@@ -135,7 +134,8 @@ O pipeline inclui o módulo `src.data_engineering.preprocessing` para preparar o
 
 > Futuramente serão utilizadas regiões mais descriminativas como olhos, boca, cabelo, tecido...
 
-Essas regiões são usadas para análise espacial, espectral e temporal de forma separada e comparativa.
+Essas regiões são usadas nas análises espacial e espectral e servirão de base
+para a futura análise temporal.
 
 ## Metadados e organização dos arquivos
 
@@ -165,9 +165,9 @@ Essa organização facilita leitura rápida dos dados nos notebooks e padroniza 
 Os resultados são salvos em dois níveis:
 
 - **Frame level**: métricas por frame armazenadas em formato de **DataFrame** para análise fina ao longo do tempo.
-- **Video level (final)**: métricas agregadas com variação temporal do vídeo inteiro.
+- **Video level (final)**: resumos estatísticos agregados dos frames do vídeo.
 
-As métricas finais de variação temporal em nível de vídeo são as utilizadas como referência principal para comparação entre métodos e tomada de decisão no ensemble. Elas serão em granularidades de média, desvio padrão e delta, calculando a diferença entre regiões por vídeo.
+Na versão atual, o nível de vídeo contém média, desvio padrão e mediana das métricas por frame. Esses resumos são invariantes à ordem e não constituem análise temporal. Deltas e demais sinais temporais permanecem planejados para uma etapa posterior.
 
 ### Estrutura esperada de saída
 
@@ -190,7 +190,7 @@ video_results = pd.DataFrame({
     'label': [...],       # real / fake
     'sinal_1_mean': [...],
     'sinal_1_std': [...],
-    'sinal_1_delta': [...],  # max - min
+    'sinal_1_median': [...],
     ...
 })
 ```

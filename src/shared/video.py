@@ -7,7 +7,6 @@ from typing import Any
 import cv2
 import numpy as np
 
-
 def get_video_frame_count(video_path: str | Path) -> int:
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -139,6 +138,18 @@ def metadata_index_for_frame(frame_idx: int, frame_count: int, metadata_len: int
 
 
 def metadata_for_frame(frame_idx: int, frame_count: int, metadata: list[dict[str, Any]]):
+    indexed_frames = [
+        (idx, item.get("frame_id"))
+        for idx, item in enumerate(metadata)
+        if isinstance(item.get("frame_id"), (int, float))
+    ]
+    if indexed_frames:
+        exact = next((idx for idx, stored_frame in indexed_frames if int(stored_frame) == int(frame_idx)), None)
+        if exact is not None:
+            return metadata[exact], exact
+        nearest = min(indexed_frames, key=lambda pair: abs(int(pair[1]) - int(frame_idx)))[0]
+        return metadata[nearest], nearest
+
     idx = metadata_index_for_frame(frame_idx, frame_count, len(metadata))
     if idx is None:
         return None, None

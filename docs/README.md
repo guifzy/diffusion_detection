@@ -245,9 +245,14 @@ Grupos atuais:
 |---|---|---|
 | A | Textura | LBP, Sobel, Laplacian, entropia |
 | B | Estrutura | SIFT, patch similarity |
-| C | Ruído | residual noise, energia, variância |
-| D | Frequência | FFT, simetria, anisotropia |
-| E | Física | iluminação, assimetria facial, reflexos planejados |
+| C | Resíduo bilateral | estatísticas robustas, dependência espacial e correlação cromática |
+| D | Frequência espacial | PSD, razões de potência, perfil radial e anisotropia |
+| E | Fotometria regional | luminância, crominância, assimetria e candidatos de sombra |
+
+As fórmulas, nomes e limites de interpretação da versão atual estão definidos
+em `docs/contrato_sinais_v0_2.md`. Temporalidade e reflexos oculares não
+integram esta versão; sombras são tratadas como candidatos fotométricos, sem
+validação geométrica 3D.
 
 A extração centralizada fica em:
 
@@ -748,4 +753,3 @@ docker volume rm tcc_minio_data
 ```
 
 O nome do volume pode mudar caso `COMPOSE_PROJECT_NAME` tenha sido alterado.
-
