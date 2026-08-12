@@ -113,13 +113,66 @@ def aggregate_video_features(
     return values
 
 
+def aggregate_video_region_features(
+    frame_features: pd.DataFrame,
+    groups: Iterable[str] | str = "abcde",
+    video_id: str | None = None,
+    label: str | None = None,
+) -> pd.DataFrame:
+    if frame_features.empty:
+        empty = aggregate_video_features(frame_features, groups=groups, video_id=video_id, label=label)
+        return pd.DataFrame([empty])
+
+    if "region" not in frame_features.columns:
+        return pd.DataFrame([aggregate_video_features(frame_features, groups=groups, video_id=video_id, label=label)])
+
+    rows = []
+    group_columns = ["region"]
+    for region, group in frame_features.groupby(group_columns, dropna=False):
+        region_value = region[0] if isinstance(region, tuple) else region
+        values = aggregate_video_metrics(group, prefixes_for_groups(groups))
+        values["video_id"] = video_id if video_id is not None else str(group["video_id"].iloc[0])
+        if label is not None:
+            values["label"] = label
+        elif "label" in group.columns:
+            values["label"] = group["label"].iloc[0]
+        values["region"] = region_value
+        for column in ("region_id", "region_label", "region_type", "track_id", "region_source"):
+            if column in group.columns:
+                values[column] = group[column].dropna().astype(str).iloc[0] if not group[column].dropna().empty else ""
+        values["n_frames"] = int(group["frame_id"].nunique()) if "frame_id" in group.columns else int(len(group))
+        values["metadata_rows_used"] = int(group["metadata_idx"].nunique()) if "metadata_idx" in group.columns else 0
+        values["feature_groups_used"] = groups_to_string(groups)
+        values["aggregated_at"] = datetime.now(timezone.utc).isoformat()
+        values["pipeline_version"] = PIPELINE_VERSION
+        metadata_keys = {
+            "video_id",
+            "label",
+            "region",
+            "region_id",
+            "region_label",
+            "region_type",
+            "track_id",
+            "region_source",
+            "n_frames",
+            "metadata_rows_used",
+            "feature_groups_used",
+            "aggregated_at",
+            "pipeline_version",
+        }
+        feature_values = {key: value for key, value in values.items() if key not in metadata_keys}
+        values["missing_feature_ratio"] = float(pd.Series(feature_values).isna().mean()) if feature_values else 1.0
+        rows.append(values)
+    return pd.DataFrame(rows)
+
+
 def build_video_features(
     video_path: str | Path,
     metadata_path: str | Path,
     groups: Iterable[str] | str = "abcde",
     max_frames: int | None = None,
     label: str | None = None,
-) -> tuple[pd.DataFrame, dict]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     frame_features = extract_video_frame_features(
         video_path,
         metadata_path,
@@ -127,7 +180,7 @@ def build_video_features(
         max_frames=max_frames,
         label=label,
     )
-    video_features = aggregate_video_features(
+    video_features = aggregate_video_region_features(
         frame_features,
         groups=groups,
         video_id=Path(video_path).stem,

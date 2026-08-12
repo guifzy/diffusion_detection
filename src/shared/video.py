@@ -74,6 +74,56 @@ def clip_bbox(bbox, width: int, height: int, min_size: int = 2):
     return [x1, y1, x2, y2]
 
 
+def bbox_to_mask(shape: tuple[int, int], bbox) -> np.ndarray:
+    h, w = shape[:2]
+    mask = np.zeros((h, w), dtype=np.uint8)
+    clipped = clip_bbox(bbox, w, h)
+    if clipped is None:
+        return mask
+    x1, y1, x2, y2 = clipped
+    mask[y1:y2, x1:x2] = 1
+    return mask
+
+
+def polygon_to_mask(shape: tuple[int, int], polygon) -> np.ndarray:
+    h, w = shape[:2]
+    mask = np.zeros((h, w), dtype=np.uint8)
+    if not polygon:
+        return mask
+    points = np.asarray(polygon, dtype=np.float32)
+    if points.ndim != 2 or points.shape[0] < 3 or points.shape[1] < 2:
+        return mask
+    points[:, 0] = np.clip(points[:, 0], 0, w - 1)
+    points[:, 1] = np.clip(points[:, 1], 0, h - 1)
+    hull = cv2.convexHull(points[:, :2].astype(np.int32))
+    cv2.fillConvexPoly(mask, hull, 1)
+    return mask
+
+
+def bbox_from_mask(mask: np.ndarray, min_size: int = 2):
+    ys, xs = np.where(mask == 1)
+    if xs.size == 0:
+        return None
+    return clip_bbox([xs.min(), ys.min(), xs.max() + 1, ys.max() + 1], mask.shape[1], mask.shape[0], min_size=min_size)
+
+
+def expand_bbox(bbox, width: int, height: int, padding: float = 0.2):
+    clipped = clip_bbox(bbox, width, height)
+    if clipped is None:
+        return None
+    x1, y1, x2, y2 = clipped
+    bw = x2 - x1
+    bh = y2 - y1
+    px = int(bw * padding)
+    py = int(bh * padding)
+    return [
+        max(0, x1 - px),
+        max(0, y1 - py),
+        min(width, x2 + px),
+        min(height, y2 + py),
+    ]
+
+
 def scale_bbox(bbox, scale: float):
     if scale == 0:
         return None
@@ -86,30 +136,56 @@ def create_face_regions(frame: np.ndarray, bbox, padding: float = 0.2):
     if clipped is None:
         return None
 
-    x1, y1, x2, y2 = clipped
-    bw = x2 - x1
-    bh = y2 - y1
-    px = int(bw * padding)
-    py = int(bh * padding)
+    return create_region_context(frame.shape, bbox=clipped, padding=padding)
 
-    x1p = max(0, x1 - px)
-    y1p = max(0, y1 - py)
-    x2p = min(w, x2 + px)
-    y2p = min(h, y2 + py)
 
-    face_mask = np.zeros((h, w), dtype=np.uint8)
-    face_mask[y1:y2, x1:x2] = 1
+def create_region_context(
+    frame_shape,
+    bbox,
+    polygon=None,
+    target_mask: np.ndarray | None = None,
+    background_mask: np.ndarray | None = None,
+    padding: float = 0.2,
+):
+    h, w = frame_shape[:2]
+    clipped = clip_bbox(bbox, w, h)
+    if clipped is None:
+        return None
+
+    if target_mask is not None:
+        target_mask = (target_mask > 0).astype(np.uint8)
+        if target_mask.shape != (h, w):
+            return None
+        if target_mask.sum() == 0:
+            return None
+    elif polygon:
+        target_mask = polygon_to_mask((h, w), polygon)
+        if target_mask.sum() == 0:
+            target_mask = bbox_to_mask((h, w), clipped)
+    else:
+        target_mask = bbox_to_mask((h, w), clipped)
+
+    target_bbox = bbox_from_mask(target_mask) or clipped
+    expanded = expand_bbox(target_bbox, w, h, padding=padding)
+    if expanded is None:
+        return None
+    x1p, y1p, x2p, y2p = expanded
 
     expanded_mask = np.zeros((h, w), dtype=np.uint8)
     expanded_mask[y1p:y2p, x1p:x2p] = 1
+    border_mask = np.clip(expanded_mask - target_mask, 0, 1).astype(np.uint8)
 
-    border_mask = expanded_mask - face_mask
-    background_mask = 1 - expanded_mask
+    if background_mask is None:
+        context_mask = (1 - expanded_mask).astype(np.uint8)
+    else:
+        context_mask = (background_mask > 0).astype(np.uint8)
+        context_mask[target_mask == 1] = 0
 
+    x1, y1, x2, y2 = target_bbox
     return {
-        "face": face_mask,
+        "face": target_mask.astype(np.uint8),
         "border": border_mask,
-        "background": background_mask,
+        "background": context_mask.astype(np.uint8),
         "bbox": (x1, y1, x2, y2),
         "bbox_expanded": (x1p, y1p, x2p, y2p),
     }

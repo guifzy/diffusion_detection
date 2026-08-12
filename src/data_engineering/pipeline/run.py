@@ -73,6 +73,9 @@ def run_preprocess(
     detect_every: int = 1,
     overwrite: bool = False,
     limit: int | None = None,
+    face_model: str | Path | None = None,
+    segmenter_model: str | Path | None = None,
+    max_faces: int = 10,
     run_id: str | None = None,
 ) -> list[Path]:
     import pandas as pd
@@ -88,6 +91,9 @@ def run_preprocess(
             max_frames=max_frames,
             detect_every=detect_every,
             overwrite=overwrite,
+            face_model_path=face_model,
+            segmenter_model_path=segmenter_model,
+            max_faces=max_faces,
         )
         log_pipeline_event("stage_end", "build_silver_metadata", "success", run_id, {"metadata_files": len(outputs)})
         return outputs
@@ -103,6 +109,9 @@ def run_preprocess(
         max_frames=max_frames,
         detect_every=detect_every,
         overwrite=overwrite,
+        face_model_path=face_model,
+        segmenter_model_path=segmenter_model,
+        max_faces=max_faces,
     )
     log_pipeline_event("stage_end", "build_silver_metadata", "success", run_id, {"metadata_files": len(outputs)})
     return outputs
@@ -117,6 +126,9 @@ def run_gold(
     generate_missing_metadata: bool = False,
     overwrite_metadata: bool = False,
     limit: int | None = None,
+    face_model: str | Path | None = None,
+    segmenter_model: str | Path | None = None,
+    max_faces: int = 10,
     run_id: str | None = None,
 ) -> object:
     from src.data_engineering.datasets.gold import build_gold_dataset
@@ -131,6 +143,9 @@ def run_gold(
         generate_missing_metadata=generate_missing_metadata,
         overwrite_metadata=overwrite_metadata,
         limit=limit,
+        face_model_path=face_model,
+        segmenter_model_path=segmenter_model,
+        max_faces=max_faces,
     )
     log_pipeline_event("stage_end", "build_gold_dataset", "success", run_id, {"rows": len(dataset)})
     return dataset
@@ -218,6 +233,9 @@ def run_build(args: argparse.Namespace) -> dict:
             detect_every=args.detect_every,
             overwrite=args.overwrite_metadata,
             limit=args.limit,
+            face_model=args.face_model,
+            segmenter_model=args.segmenter_model,
+            max_faces=args.max_faces,
             run_id=run_id,
         )
     if not args.skip_gold:
@@ -230,6 +248,9 @@ def run_build(args: argparse.Namespace) -> dict:
             generate_missing_metadata=args.generate_missing_metadata,
             overwrite_metadata=args.overwrite_metadata,
             limit=args.limit,
+            face_model=args.face_model,
+            segmenter_model=args.segmenter_model,
+            max_faces=args.max_faces,
             run_id=run_id,
         )
     return run_validate(
@@ -265,6 +286,9 @@ def build_parser() -> argparse.ArgumentParser:
     preprocess.add_argument("--manifest", "--catalog", dest="manifest", type=Path, default=BRONZE_MANIFEST_PATH)
     preprocess.add_argument("--max-frames", type=int)
     preprocess.add_argument("--detect-every", type=int, default=1)
+    preprocess.add_argument("--face-model", type=Path)
+    preprocess.add_argument("--segmenter-model", type=Path)
+    preprocess.add_argument("--max-faces", type=int, default=10)
     preprocess.add_argument("--overwrite", action="store_true")
     preprocess.add_argument("--run-id")
 
@@ -274,6 +298,9 @@ def build_parser() -> argparse.ArgumentParser:
     gold.add_argument("--max-frames", type=int)
     gold.add_argument("--generate-missing-metadata", nargs="?", const=True, default=False, type=parse_bool)
     gold.add_argument("--overwrite-metadata", nargs="?", const=True, default=False, type=parse_bool)
+    gold.add_argument("--face-model", type=Path)
+    gold.add_argument("--segmenter-model", type=Path)
+    gold.add_argument("--max-faces", type=int, default=10)
     gold.add_argument("--run-id")
 
     validate = subparsers.add_parser("validate", help="Validate contracts and write a quality report.")
@@ -293,6 +320,9 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--groups", default="abcde")
     build.add_argument("--max-frames", type=int)
     build.add_argument("--detect-every", type=int, default=1)
+    build.add_argument("--face-model", type=Path)
+    build.add_argument("--segmenter-model", type=Path)
+    build.add_argument("--max-faces", type=int, default=10)
     build.add_argument("--generate-missing-metadata", nargs="?", const=True, default=False, type=parse_bool)
     build.add_argument("--overwrite-metadata", nargs="?", const=True, default=False, type=parse_bool)
     build.add_argument("--skip-ingest", action="store_true")
@@ -334,6 +364,9 @@ def main() -> None:
             detect_every=args.detect_every,
             overwrite=args.overwrite,
             limit=args.limit,
+            face_model=args.face_model,
+            segmenter_model=args.segmenter_model,
+            max_faces=args.max_faces,
             run_id=args.run_id,
         )
         logger.info("Preprocessing finished with %s metadata files.", len(outputs))

@@ -17,7 +17,7 @@ exploratoria.
 
 | Ordem | Etapa | Prioridade | Complexidade | Dependencias |
 | ---: | --- | --- | --- | --- |
-| 1 | Atualizar deteccao, rastreabilidade de faces e regioes | P0 | Alta | Nenhuma |
+| 1 | Consolidar deteccao MediaPipe, rastreabilidade e auditoria de regioes | P0 | Alta | Nenhuma |
 | 2 | Validar e congelar o conjunto de sinais | P1 | Alta | Etapa 1 |
 | 3 | Padronizar e validar o pipeline de engenharia de dados | P1 | Alta | Etapas 1 e 2 |
 | 4 | Realizar EDA e analise estatistica dos sinais | P2 | Alta | Etapas 1, 2 e 3 |
@@ -36,41 +36,39 @@ experimental.
 
 ---
 
-## 1. Atualizar deteccao e rastreabilidade de faces e regioes
+## 1. Consolidar deteccao MediaPipe e rastreabilidade de regioes
 
 | Campo | Definicao |
 | --- | --- |
 | Prioridade | P0 |
 | Complexidade | Alta |
 | Natureza | Metodologia e implementacao |
-| Objetivo | Garantir que cada regiao extraida seja associada ao video, frame, tempo, identidade facial e origem da deteccao |
+| Objetivo | Garantir que cada regiao MediaPipe seja associada ao video, frame, tempo, identidade facial e origem da deteccao |
 
 ### Justificativa
 
-O pipeline atual opera sobre uma face dominante por frame. Essa estrategia e
-suficiente para smoke test e validacao inicial dos sinais, mas nao e adequada
-para experimentos com multiplas pessoas, mudancas de cena, oclusoes, perda de
-track ou alternancia entre faces. Antes do EDA definitivo, a unidade de analise
-precisa ser explicitamente rastreavel.
+O pipeline foi adaptado para gerar regioes com MediaPipe, incluindo rosto
+completo, olhos, boca, corpo e fundo. Antes do EDA definitivo, essa geometria
+precisa ser auditada em amostra real e estabilizada contra multiplas pessoas,
+mudancas de cena, oclusoes, perda de track e alternancia entre faces.
 
 ### Tarefas
 
-- Detectar todas as faces elegiveis, em vez de selecionar apenas a face de maior
-  confianca.
-- Associar a mesma identidade facial entre frames por meio de `track_id` ou
-  identificador equivalente.
+- Auditar se todas as faces elegiveis estao sendo detectadas pelo MediaPipe.
+- Validar a associacao da mesma identidade facial entre frames por meio de
+  `track_id`.
 - Reiniciar ou encerrar tracks apos corte de cena, desaparecimento prolongado,
   perda de rastreamento ou mudanca abrupta de escala/posicao.
 - Registrar `timestamp`, `frame_id`, `track_id`, `region_id`, `region_type`,
   score de deteccao, origem da caixa e indicadores de qualidade.
-- Definir politica formal para `detector`, `tracker`, `last_bbox` e
-  `fallback_center`.
+- Definir politica formal para FaceLandmarker, ImageSegmenter, fallback
+  geometrico de corpo e `fallback_center`.
 - Marcar ou excluir regioes com baixa qualidade, face muito pequena, blur
   excessivo, oclusao relevante ou pose fora do regime aceitavel.
 - Gerar auditoria visual estratificada por classe, fonte, dificuldade e tipo de
   falha.
-- Definir objetivamente as regioes `face`, `border` e `background` para cada
-  face rastreada.
+- Definir objetivamente as regioes `rosto_completo`, `olhos`, `boca`, `corpo` e
+  `fundo` para cada face rastreada.
 
 ### Estrutura de dados esperada
 
@@ -79,12 +77,12 @@ longa, com uma linha por regiao associada a cada identidade facial.
 
 | video_id | frame_id | timestamp_s | track_id | region_id | region_type |
 | --- | ---: | ---: | --- | --- | --- |
-| video_01 | 120 | 4.00 | face_01 | face_01 | face |
-| video_01 | 120 | 4.00 | face_01 | border_01 | border |
-| video_01 | 120 | 4.00 | face_01 | background_01 | background |
-| video_01 | 120 | 4.00 | face_02 | face_02 | face |
-| video_01 | 120 | 4.00 | face_02 | border_02 | border |
-| video_01 | 120 | 4.00 | face_02 | background_02 | background |
+| video_01 | 120 | 4.00 | face_1 | rosto_completo_1 | rosto_completo |
+| video_01 | 120 | 4.00 | face_1 | olhos_1 | olhos |
+| video_01 | 120 | 4.00 | face_1 | boca_1 | boca |
+| video_01 | 120 | 4.00 | face_1 | corpo_1 | corpo |
+| video_01 | 120 | 4.00 | face_2 | rosto_completo_2 | rosto_completo |
+| video_01 | 120 | 4.00 | global | fundo | fundo |
 
 O fundo associado a uma face deve representar seu contexto espacial controlado.
 Caso tambem exista um fundo global compartilhado, ele deve ser armazenado como

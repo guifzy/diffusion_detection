@@ -128,11 +128,14 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 
 O pipeline inclui o módulo `src.data_engineering.preprocessing` para preparar os vídeos e extrair regiões de interesse por frame:
 
-- **face**: região facial principal;
-- **contorno**: borda/periferia da face para análise de transições;
-- **fundo**: área não facial para comparação de padrões com o foreground.
+O pré-processamento utiliza MediaPipe para produzir regiões explícitas por
+frame:
 
-> Futuramente serão utilizadas regiões mais descriminativas como olhos, boca, cabelo, tecido...
+- **rosto completo**: malha facial completa associada a cada identidade;
+- **olhos**: subconjunto ocular dos landmarks faciais;
+- **boca**: subconjunto oral dos landmarks faciais;
+- **corpo**: região corporal segmentada ou aproximada geometricamente;
+- **fundo**: complemento das regiões ocupadas no frame.
 
 Essas regiões são usadas nas análises espacial e espectral e servirão de base
 para a futura análise temporal.
@@ -143,8 +146,8 @@ Os metadados do projeto são organizados por contratos de dados:
 
 - **CSV de entrada Bronze**: `link,label`, onde `label=true` representa vídeo real e `label=false` representa vídeo falso.
 - **Manifesto Bronze**: `bronze_manifest.csv`, fonte de verdade após a ingestão, com `video_id`, `source_url`, `filename`, `storage_path`, `sha256`, `label`, `status` e rastreabilidade.
-- **JSON auxiliar Silver**: metadados detalhados por vídeo e por frame para reuso do extrator atual.
-- **Parquet/CSV Silver e Gold**: ativos tabulares contratados para validação, treinamento e auditoria.
+- **JSON auxiliar Silver**: metadados detalhados por vídeo, frame e região para reuso do extrator atual.
+- **Parquet/CSV Silver e Gold**: ativos tabulares contratados para validação, treinamento e auditoria por região.
 
 ## Formato dos arquivos de vídeo
 
@@ -153,10 +156,10 @@ Atualmente, o projeto utiliza vídeos brutos em `data/bronze/videos/`, manifesto
 - `data/bronze/manifests/video-metadata-publish-with-links.csv`: CSV de entrada com apenas `link,label`.
 - `data/bronze/manifests/bronze_manifest.csv`: manifesto oficial de ingestão, gerado pelo pipeline.
 - `data/silver/face_metadata_json/*_meta.json`: metadados auxiliares por vídeo com informações da extração de regiões.
-- `data/silver/face_metadata/`: versão tabular contratada dos metadados faciais.
-- `data/silver/frame_features/`: features por frame.
-- `data/silver/video_features/`: features agregadas por vídeo.
-- `data/gold/gold_training_dataset.parquet`: dataset oficial para treino.
+- `data/silver/face_metadata/`: versão tabular contratada dos metadados regionais.
+- `data/silver/frame_features/`: features por frame e região.
+- `data/silver/video_features/`: features agregadas por vídeo e região.
+- `data/gold/gold_training_dataset.parquet`: dataset oficial para treino em grão vídeo/região.
 
 Essa organização facilita leitura rápida dos dados nos notebooks e padroniza a extração de sinais espaciais, espectrais e temporais.
 
@@ -164,8 +167,8 @@ Essa organização facilita leitura rápida dos dados nos notebooks e padroniza 
 
 Os resultados são salvos em dois níveis:
 
-- **Frame level**: métricas por frame armazenadas em formato de **DataFrame** para análise fina ao longo do tempo.
-- **Video level (final)**: resumos estatísticos agregados dos frames do vídeo.
+- **Frame level**: métricas por frame e região armazenadas em formato de **DataFrame** para análise fina ao longo do tempo.
+- **Video-region level (final)**: resumos estatísticos agregados dos frames de cada região do vídeo.
 
 Na versão atual, o nível de vídeo contém média, desvio padrão e mediana das métricas por frame. Esses resumos são invariantes à ordem e não constituem análise temporal. Deltas e demais sinais temporais permanecem planejados para uma etapa posterior.
 

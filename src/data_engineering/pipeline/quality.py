@@ -17,6 +17,7 @@ from src.shared.core.paths import (
     pipeline_plot_path,
     silver_video_features_path,
 )
+from src.shared.core.version import PIPELINE_VERSION
 
 
 def _read_optional_table(path: str | Path) -> pd.DataFrame:
@@ -37,6 +38,14 @@ def _read_many_tables(paths: list[Path]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+def _current_version_only(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    if "pipeline_version" not in df.columns:
+        return df.iloc[0:0].copy()
+    return df[df["pipeline_version"].astype(str) == str(PIPELINE_VERSION)].copy()
+
+
 def collect_pipeline_tables(
     manifest_path: str | Path = BRONZE_MANIFEST_PATH,
     silver_dir: str | Path = SILVER_DIR,
@@ -49,6 +58,8 @@ def collect_pipeline_tables(
     frame_features = _read_many_tables(
         sorted((silver_dir / "frame_features").glob("*.parquet")) + sorted((silver_dir / "frame_features").glob("*.csv"))
     )
+    frame_metadata = _current_version_only(frame_metadata)
+    frame_features = _current_version_only(frame_features)
     return {
         "bronze_manifest": (_read_optional_table(manifest_path), str(manifest_path)),
         "frame_metadata": (frame_metadata, str(silver_dir / "face_metadata")),
@@ -108,16 +119,22 @@ def silver_metadata_quality(metadata_dir: str | Path = METADATA_DIR, silver_dir:
         }
 
     total_frames = int(len(tables))
+    frame_count = int(tables[["video_id", "frame_id"]].drop_duplicates().shape[0]) if {"video_id", "frame_id"} <= set(tables.columns) else total_frames
     videos_processed = int(tables["video_id"].nunique()) if "video_id" in tables else 0
     source_counts = tables["source"].fillna("").value_counts(normalize=True).to_dict() if "source" in tables else {}
     return {
         "videos_processed": videos_processed,
         "json_files": int(json_count),
-        "frames_processados": total_frames,
-        "frames_com_face": total_frames,
+        "frames_processados": frame_count,
+        "frames_com_face": int(tables[tables.get("region_type", "") == "rosto_completo"][["video_id", "frame_id"]].drop_duplicates().shape[0])
+        if {"video_id", "frame_id", "region_type"} <= set(tables.columns)
+        else frame_count,
+        "region_rows": total_frames,
         "avg_face_coverage": 1.0 if total_frames else 0.0,
         "coverage_ratio": 1.0 if total_frames else 0.0,
         "percentual_detector": float(source_counts.get("detector", 0.0)),
+        "percentual_mediapipe_face_landmarker": float(source_counts.get("mediapipe_face_landmarker", 0.0)),
+        "percentual_mediapipe_image_segmenter": float(source_counts.get("mediapipe_image_segmenter", 0.0)),
         "percentual_tracker": float(source_counts.get("tracker", 0.0)),
         "percentual_last_bbox": float(source_counts.get("last_bbox", 0.0)),
         "percentual_fallback_center": float(source_counts.get("fallback_center", 0.0)),
@@ -131,7 +148,9 @@ def silver_features_quality(silver_dir: str | Path = SILVER_DIR) -> dict:
     frame_tables = _read_many_tables(
         sorted((silver_dir / "frame_features").glob("*.parquet")) + sorted((silver_dir / "frame_features").glob("*.csv"))
     )
+    frame_tables = _current_version_only(frame_tables)
     video_features = _read_optional_table(silver_video_features_path(silver_dir))
+    video_features = _current_version_only(video_features)
 
     avg_missing = (
         float(video_features["missing_feature_ratio"].mean())
@@ -143,7 +162,8 @@ def silver_features_quality(silver_dir: str | Path = SILVER_DIR) -> dict:
         + len(list((silver_dir / "frame_features").glob("*.csv"))),
         "frame_rows": int(len(frame_tables)),
         "videos_with_frame_features": int(frame_tables["video_id"].nunique()) if "video_id" in frame_tables else 0,
-        "videos_processed": int(len(video_features)),
+        "videos_processed": int(video_features["video_id"].nunique()) if "video_id" in video_features else 0,
+        "video_region_rows": int(len(video_features)),
         "avg_missing_feature_ratio": avg_missing,
     }
 
@@ -186,6 +206,7 @@ def validate_pipeline_assets(
     )
     if face_tables:
         face_metadata = _read_many_tables(face_tables)
+        face_metadata = _current_version_only(face_metadata)
         results.append(validate_dataframe_contract(face_metadata, "frame_metadata", Path(silver_dir) / "face_metadata"))
 
     frame_tables = sorted((Path(silver_dir) / "frame_features").glob("*.parquet")) + sorted(
@@ -193,6 +214,7 @@ def validate_pipeline_assets(
     )
     if frame_tables:
         frame_features = _read_many_tables(frame_tables)
+        frame_features = _current_version_only(frame_features)
         results.append(validate_dataframe_contract(frame_features, "frame_features", Path(silver_dir) / "frame_features"))
 
     results.append(validate_table_contract(silver_video_features_path(silver_dir), "video_features"))

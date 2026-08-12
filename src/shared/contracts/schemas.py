@@ -35,6 +35,11 @@ BRONZE_SOURCE_COLUMNS = (
 FRAME_METADATA_COLUMNS = (
     "video_id",
     "frame_id",
+    "region",
+    "region_id",
+    "region_label",
+    "region_type",
+    "track_id",
     "bbox_x1",
     "bbox_y1",
     "bbox_x2",
@@ -55,6 +60,9 @@ FRAME_FEATURES_COLUMNS = (
     "video_id",
     "frame_id",
     "metadata_idx",
+    "region",
+    "region_type",
+    "track_id",
     "label",
     "feature_groups_used",
     "processed_at",
@@ -63,6 +71,8 @@ FRAME_FEATURES_COLUMNS = (
 
 VIDEO_FEATURES_EXTRA_COLUMNS = (
     "video_id",
+    "region",
+    "region_type",
     "label",
     "n_frames",
     "metadata_rows_used",
@@ -74,6 +84,8 @@ VIDEO_FEATURES_EXTRA_COLUMNS = (
 
 GOLD_TRAINING_EXTRA_COLUMNS = (
     "video_id",
+    "region",
+    "region_type",
     "target_label",
     "dataset_split",
     "is_trainable",
@@ -122,31 +134,37 @@ CONTRACTS = {
     "frame_metadata": DataContract(
         name="frame_metadata",
         layer="silver",
-        grain="one row per processed frame",
+        grain="one row per processed frame and region",
         required_columns=FRAME_METADATA_COLUMNS,
         accepted_values={
-            "source": ("detector", "tracker", "last_bbox", "fallback_center"),
+            "source": (
+                "mediapipe_face_landmarker",
+                "mediapipe_image_segmenter",
+                "computed_background",
+                "fallback_center",
+                "fallback_body_geometry",
+            ),
         },
-        description="Face-region metadata extracted from each processed frame.",
+        description="MediaPipe region metadata extracted from each processed frame.",
     ),
     "frame_features": DataContract(
         name="frame_features",
         layer="silver",
-        grain="one row per processed frame",
+        grain="one row per processed frame and region",
         required_columns=FRAME_FEATURES_COLUMNS,
         description="Frame-level forensic signals extracted by feature groups A-E.",
     ),
     "video_features": DataContract(
         name="video_features",
         layer="silver",
-        grain="one row per video",
+        grain="one row per video and region",
         required_columns=VIDEO_FEATURES_EXTRA_COLUMNS,
         description="Video-level aggregation of frame features before ML curation.",
     ),
     "gold_training_dataset": DataContract(
         name="gold_training_dataset",
         layer="gold",
-        grain="one row per trainable video",
+        grain="one row per trainable video and region",
         required_columns=GOLD_TRAINING_EXTRA_COLUMNS,
         accepted_values={
             "dataset_split": ("train", "validation", "test", "unassigned"),

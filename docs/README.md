@@ -45,7 +45,7 @@ O repositório roda localmente, mas já foi desenhado para evoluir para armazena
 | Python | Implementação dos pipelines e dos extratores |
 | yt-dlp | Download dos vídeos de entrada |
 | OpenCV | Leitura de frames e processamento visual |
-| RetinaFace | Detecção facial para metadata Silver |
+| MediaPipe | Landmarks faciais, regiões de rosto/olhos/boca e segmentação corpo/fundo |
 | pandas / pyarrow | Tabelas CSV/Parquet |
 | DVC | Execução reprodutível e versionamento de dados |
 | MinIO | Storage S3-like local |
@@ -106,10 +106,10 @@ Contratos atuais:
 |---|---|---|---|
 | `bronze_source_csv` | Entrada Bronze | uma linha por link | Fonte mínima com `link,label` |
 | `bronze_manifest` | Bronze | uma linha por vídeo | Registro oficial de ingestão |
-| `frame_metadata` | Silver | uma linha por frame | Metadata facial e origem da bbox |
-| `frame_features` | Silver | uma linha por frame | Sinais A-E por frame |
-| `video_features` | Silver | uma linha por vídeo | Agregações por vídeo |
-| `gold_training_dataset` | Gold | uma linha por vídeo | Dataset pronto para treino |
+| `frame_metadata` | Silver | uma linha por frame e região | Metadata MediaPipe, região e origem da bbox |
+| `frame_features` | Silver | uma linha por frame e região | Sinais A-E por frame e região |
+| `video_features` | Silver | uma linha por vídeo e região | Agregações por vídeo/região |
+| `gold_training_dataset` | Gold | uma linha por vídeo e região | Dataset pronto para treino e EDA por região |
 | `prediction_payload` | Serving | uma resposta por vídeo | Contrato futuro da API |
 
 ### CSV De Entrada Bronze
@@ -667,6 +667,9 @@ pipeline:
   groups: abcde
   max_frames:
   detect_every: 1
+  face_model: experimentos/grupo_b/data/extracted/face_landmarker.task
+  segmenter_model: models/image_segmenter.task
+  max_faces: 10
   limit:
   url_column: link
   label_column: label

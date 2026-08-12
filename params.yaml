@@ -6,6 +6,9 @@ pipeline:
   groups: abcde
   max_frames:
   detect_every: 1
+  face_model: experimentos/grupo_b/data/extracted/face_landmarker.task
+  segmenter_model: models/image_segmenter.task
+  max_faces: 10
   limit:
   url_column: link
   label_column: label

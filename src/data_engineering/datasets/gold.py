@@ -21,7 +21,7 @@ from src.shared.core.paths import (
 )
 from src.shared.core.version import PIPELINE_VERSION
 from src.shared.features.extractor import build_video_features
-from src.data_engineering.preprocessing import extract_face_metadata
+from src.data_engineering.preprocessing import extract_face_metadata, metadata_is_current
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,9 @@ def build_gold_dataset(
     max_frames: int | None = None,
     generate_missing_metadata: bool = False,
     overwrite_metadata: bool = False,
+    face_model_path: str | Path | None = None,
+    segmenter_model_path: str | Path | None = None,
+    max_faces: int = 10,
     limit: int | None = None,
     train_ratio: float = 0.7,
     validation_ratio: float = 0.15,
@@ -91,11 +94,21 @@ def build_gold_dataset(
             continue
 
         metadata_path = metadata_path_for_video(video_path, metadata_dir)
-        if (not metadata_path.exists() or overwrite_metadata) and generate_missing_metadata:
-            extract_face_metadata(video_path, metadata_path, max_frames=max_frames)
+        if (overwrite_metadata or not metadata_is_current(metadata_path)) and generate_missing_metadata:
+            extract_face_metadata(
+                video_path,
+                metadata_path,
+                max_frames=max_frames,
+                face_model_path=face_model_path,
+                segmenter_model_path=segmenter_model_path,
+                max_faces=max_faces,
+            )
 
         if not metadata_path.exists():
             logger.warning("Skipping video without metadata: %s", video_path)
+            continue
+        if not metadata_is_current(metadata_path):
+            logger.warning("Skipping video with stale metadata: %s", metadata_path)
             continue
 
         label = row.get("label")
@@ -114,11 +127,19 @@ def build_gold_dataset(
         frame_saved_path = write_dataframe(frame_features, silver_frame_features_path(video_path), index=False)
         logger.info("Saved Silver frame features for %s to %s", video_path.name, frame_saved_path)
 
-        video_features["filename"] = video_path.name
-        video_features["source_url"] = row.get("source_url", "")
-        video_features["storage_path"] = str(video_path)
-        video_features["ingestion_status"] = row.get("status", "")
-        rows.append(video_features)
+        if isinstance(video_features, pd.DataFrame):
+            video_features = video_features.copy()
+            video_features["filename"] = video_path.name
+            video_features["source_url"] = row.get("source_url", "")
+            video_features["storage_path"] = str(video_path)
+            video_features["ingestion_status"] = row.get("status", "")
+            rows.extend(video_features.to_dict(orient="records"))
+        else:
+            video_features["filename"] = video_path.name
+            video_features["source_url"] = row.get("source_url", "")
+            video_features["storage_path"] = str(video_path)
+            video_features["ingestion_status"] = row.get("status", "")
+            rows.append(video_features)
 
     silver_video_features = pd.DataFrame(rows)
     silver_saved_path = write_dataframe(silver_video_features, silver_output_path, index=False)
@@ -211,6 +232,9 @@ def main() -> None:
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--generate-missing-metadata", action="store_true")
     parser.add_argument("--overwrite-metadata", action="store_true")
+    parser.add_argument("--face-model", type=Path, default=None)
+    parser.add_argument("--segmenter-model", type=Path, default=None)
+    parser.add_argument("--max-faces", type=int, default=10)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--train-ratio", type=float, default=0.7)
     parser.add_argument("--validation-ratio", type=float, default=0.15)
@@ -228,6 +252,9 @@ def main() -> None:
         max_frames=args.max_frames,
         generate_missing_metadata=args.generate_missing_metadata,
         overwrite_metadata=args.overwrite_metadata,
+        face_model_path=args.face_model,
+        segmenter_model_path=args.segmenter_model,
+        max_faces=args.max_faces,
         limit=args.limit,
         train_ratio=args.train_ratio,
         validation_ratio=args.validation_ratio,

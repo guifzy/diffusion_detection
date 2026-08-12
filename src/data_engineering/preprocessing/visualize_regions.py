@@ -7,13 +7,17 @@ import cv2
 import numpy as np
 
 from src.shared.core.paths import METADATA_DIR, metadata_path_for_video
-from src.shared.video import create_face_regions, load_metadata, metadata_for_frame
+from src.shared.features.common import prepare_annotated_region_contexts
+from src.shared.video import load_metadata, metadata_for_frame
 
 
 COLORS_BGR = {
-    "face": (50, 205, 50),
+    "rosto_completo": (50, 205, 50),
+    "olhos": (255, 160, 40),
+    "boca": (80, 80, 245),
+    "corpo": (190, 90, 230),
+    "fundo": (210, 90, 70),
     "border": (0, 215, 255),
-    "background": (210, 90, 70),
 }
 
 
@@ -57,26 +61,25 @@ def render_region_overlay(
     if meta is None:
         raise RuntimeError(f"No compatible metadata found for frame {frame_id}: {metadata_path}")
 
-    regions = create_face_regions(frame, meta["bbox"])
-    if regions is None:
-        raise RuntimeError(f"Could not create regions for frame {frame_id} using bbox={meta.get('bbox')}")
+    frame, contexts = prepare_annotated_region_contexts(frame, meta)
+    if not contexts:
+        raise RuntimeError(f"Could not create regions for frame {frame_id} using metadata={metadata_path}")
 
     overlay = frame.copy()
-    _blend_mask(overlay, regions["background"], COLORS_BGR["background"], alpha * 0.45)
-    _blend_mask(overlay, regions["border"], COLORS_BGR["border"], alpha)
-    _blend_mask(overlay, regions["face"], COLORS_BGR["face"], alpha)
+    ordered = sorted(contexts, key=lambda item: 0 if item["region_type"] == "fundo" else 1)
+    labels = []
+    for context in ordered:
+        region_type = context["region_type"]
+        color = COLORS_BGR.get(region_type, (245, 245, 245))
+        opacity = alpha * 0.35 if region_type == "fundo" else alpha
+        _blend_mask(overlay, context["regions"]["face"], color, opacity)
+        if region_type != "fundo":
+            _blend_mask(overlay, context["regions"]["border"], COLORS_BGR["border"], alpha * 0.45)
+        x1, y1, x2, y2 = context["regions"]["bbox"]
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
+        labels.append((context["region"], color))
 
-    x1, y1, x2, y2 = regions["bbox"]
-    ex1, ey1, ex2, ey2 = regions["bbox_expanded"]
-    cv2.rectangle(overlay, (ex1, ey1), (ex2, ey2), COLORS_BGR["border"], 2)
-    cv2.rectangle(overlay, (x1, y1), (x2, y2), COLORS_BGR["face"], 2)
-
-    labels = [
-        ("face", COLORS_BGR["face"]),
-        ("contorno", COLORS_BGR["border"]),
-        ("fundo", COLORS_BGR["background"]),
-        (f"frame={frame_id} metadata_idx={metadata_idx}", (245, 245, 245)),
-    ]
+    labels.append((f"frame={frame_id} metadata_idx={metadata_idx}", (245, 245, 245)))
     y = 28
     for label, color in labels:
         cv2.putText(overlay, label, (18, y), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 0), 4, cv2.LINE_AA)
@@ -89,7 +92,7 @@ def render_region_overlay(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export a frame with face, border and background region overlays.")
+    parser = argparse.ArgumentParser(description="Export a frame with MediaPipe region overlays.")
     parser.add_argument("--video", required=True, type=Path, help="Path to the input video.")
     parser.add_argument("--metadata", type=Path, help="Path to the *_meta.json file. Defaults to the standard Silver path.")
     parser.add_argument("--output", type=Path, help="Output PNG path. Defaults to docs/img/<video>_regions_frame_<frame>.png.")

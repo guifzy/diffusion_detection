@@ -6,11 +6,14 @@ import numpy as np
 import pandas as pd
 
 from src.shared.video import (
+    bbox_to_mask,
     clip_bbox,
     create_face_regions,
+    create_region_context,
     iter_sampled_frames,
     load_metadata,
     metadata_for_frame,
+    polygon_to_mask,
     standardize_frame,
 )
 
@@ -71,6 +74,104 @@ def prepare_frame_regions(frame: np.ndarray, bbox, max_size: int = FEATURE_MAX_F
     return frame_std, create_face_regions(frame_std, clipped_bbox)
 
 
+def _scaled_bbox(bbox, scale: float, width: int, height: int):
+    if not bbox:
+        return None
+    scaled = [float(value) * scale for value in bbox]
+    return clip_bbox(scaled, width, height)
+
+
+def _scaled_polygon(polygon, scale: float):
+    if not polygon:
+        return []
+    return [[float(point[0]) * scale, float(point[1]) * scale] for point in polygon if len(point) >= 2]
+
+
+def _annotation_mask(shape: tuple[int, int], region: dict, scale: float) -> np.ndarray:
+    h, w = shape
+    bbox = _scaled_bbox(region.get("bbox"), scale, w, h)
+    polygon = _scaled_polygon(region.get("polygon"), scale)
+    if polygon:
+        mask = polygon_to_mask((h, w), polygon)
+        if mask.sum() > 0:
+            return mask
+    if bbox is not None:
+        return bbox_to_mask((h, w), bbox)
+    return np.zeros((h, w), dtype=np.uint8)
+
+
+def _background_mask_for_regions(shape: tuple[int, int], regions: list[dict], scale: float) -> np.ndarray:
+    occupied = np.zeros(shape, dtype=np.uint8)
+    for region in regions:
+        if region.get("region_type") == "fundo":
+            continue
+        occupied = np.maximum(occupied, _annotation_mask(shape, region, scale))
+    return (1 - occupied).astype(np.uint8)
+
+
+def prepare_annotated_region_contexts(frame: np.ndarray, meta: dict, max_size: int = FEATURE_MAX_FRAME_SIZE):
+    frame_std, scale = standardize_frame(frame, max_size=max_size)
+    h, w = frame_std.shape[:2]
+    annotations = list(meta.get("regions") or [])
+    if not annotations:
+        frame_std, legacy_regions = prepare_frame_regions(frame, meta.get("bbox"), max_size=max_size)
+        if legacy_regions is None:
+            return frame_std, []
+        return frame_std, [
+            {
+                "region": "rosto_completo_1",
+                "region_id": "rosto_completo_1",
+                "region_label": "rosto completo 1",
+                "region_type": "rosto_completo",
+                "track_id": "face_1",
+                "source": meta.get("source", "legacy"),
+                "confidence": meta.get("detector_score"),
+                "metadata_region_index": 0,
+                "regions": legacy_regions,
+            }
+        ]
+
+    background_mask = _background_mask_for_regions((h, w), annotations, scale)
+    contexts = []
+    for index, annotation in enumerate(annotations):
+        region_type = annotation.get("region_type", "")
+        if region_type == "fundo":
+            target_mask = background_mask
+            bbox = [0, 0, w, h]
+            polygon = []
+            context_background = (1 - background_mask).astype(np.uint8)
+        else:
+            target_mask = _annotation_mask((h, w), annotation, scale)
+            bbox = _scaled_bbox(annotation.get("bbox"), scale, w, h)
+            polygon = _scaled_polygon(annotation.get("polygon"), scale)
+            context_background = background_mask
+        if target_mask.sum() == 0 or bbox is None:
+            continue
+        region_context = create_region_context(
+            frame_std.shape,
+            bbox=bbox,
+            polygon=polygon,
+            target_mask=target_mask,
+            background_mask=context_background,
+        )
+        if region_context is None:
+            continue
+        contexts.append(
+            {
+                "region": annotation.get("region", annotation.get("region_id", "")),
+                "region_id": annotation.get("region_id", annotation.get("region", "")),
+                "region_label": annotation.get("region_label", ""),
+                "region_type": region_type,
+                "track_id": annotation.get("track_id", ""),
+                "source": annotation.get("source", meta.get("source", "")),
+                "confidence": annotation.get("confidence", meta.get("detector_score")),
+                "metadata_region_index": index,
+                "regions": region_context,
+            }
+        )
+    return frame_std, contexts
+
+
 def aggregate_video_metrics(frame_metrics: pd.DataFrame, prefixes: tuple[str, ...]) -> dict:
     metric_cols = [
         col
@@ -102,23 +203,32 @@ def extract_frame_metrics(
         meta, metadata_idx = metadata_for_frame(frame_idx, frame_count, metadata)
         if meta is None:
             continue
-        frame_std, regions = prepare_frame_regions(frame, meta["bbox"])
-        if regions is None:
+        frame_std, region_contexts = prepare_annotated_region_contexts(frame, meta)
+        if not region_contexts:
             continue
 
-        features = {
-            "video_id": Path(video_path).stem,
-            "video_name": Path(video_path).name,
-            "frame_id": int(frame_idx),
-            "frame": int(frame_idx),
-            "metadata_idx": metadata_idx,
-        }
-        if label is not None:
-            features["label"] = label
+        for context in region_contexts:
+            features = {
+                "video_id": Path(video_path).stem,
+                "video_name": Path(video_path).name,
+                "frame_id": int(frame_idx),
+                "frame": int(frame_idx),
+                "metadata_idx": metadata_idx,
+                "metadata_region_index": context["metadata_region_index"],
+                "region": context["region"],
+                "region_id": context["region_id"],
+                "region_label": context["region_label"],
+                "region_type": context["region_type"],
+                "track_id": context["track_id"],
+                "region_source": context["source"],
+                "region_confidence": context["confidence"],
+            }
+            if label is not None:
+                features["label"] = label
 
-        for func in metric_functions:
-            features.update(func(frame_std, regions))
+            for func in metric_functions:
+                features.update(func(frame_std, context["regions"]))
 
-        rows.append(features)
+            rows.append(features)
 
     return pd.DataFrame(rows)

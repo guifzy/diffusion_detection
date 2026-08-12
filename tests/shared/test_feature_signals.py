@@ -4,7 +4,8 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from src.shared.features.common import aggregate_video_metrics, region_contrasts
+from src.shared.features.common import aggregate_video_metrics, prepare_annotated_region_contexts, region_contrasts
+from src.shared.features.extractor import aggregate_video_region_features
 from src.shared.features.group_a import (
     compute_laplacian_metrics,
     compute_lbp_metrics,
@@ -61,6 +62,71 @@ def test_video_aggregation_excludes_quality_control_columns() -> None:
 
     assert "patch_face_sim_mean_mean" in aggregated
     assert not any(key.startswith("qc_") for key in aggregated)
+
+
+def test_annotated_regions_expand_to_region_contexts() -> None:
+    frame, _regions = _frame_and_regions()
+    metadata = {
+        "regions": [
+            {
+                "region": "rosto_completo_1",
+                "region_id": "rosto_completo_1",
+                "region_label": "rosto completo 1",
+                "region_type": "rosto_completo",
+                "track_id": "face_1",
+                "bbox": [32, 32, 96, 96],
+                "polygon": [[32, 32], [96, 32], [96, 96], [32, 96]],
+                "source": "mediapipe_face_landmarker",
+            },
+            {
+                "region": "olhos_1",
+                "region_id": "olhos_1",
+                "region_label": "olhos 1",
+                "region_type": "olhos",
+                "track_id": "face_1",
+                "bbox": [42, 45, 86, 60],
+                "polygon": [[42, 45], [86, 45], [86, 60], [42, 60]],
+                "source": "mediapipe_face_landmarker",
+            },
+            {
+                "region": "fundo",
+                "region_id": "fundo",
+                "region_label": "fundo",
+                "region_type": "fundo",
+                "track_id": "global",
+                "bbox": [0, 0, 128, 128],
+                "source": "computed_background",
+            },
+        ]
+    }
+
+    _frame_std, contexts = prepare_annotated_region_contexts(frame, metadata)
+
+    assert [context["region"] for context in contexts] == ["rosto_completo_1", "olhos_1", "fundo"]
+    assert all(context["regions"]["face"].sum() > 0 for context in contexts)
+
+
+def test_region_aggregation_keeps_one_row_per_video_region() -> None:
+    frame_metrics = pd.DataFrame(
+        {
+            "video_id": ["video_01", "video_01", "video_01", "video_01"],
+            "frame_id": [0, 1, 0, 1],
+            "metadata_idx": [0, 1, 0, 1],
+            "region": ["rosto_completo_1", "rosto_completo_1", "fundo", "fundo"],
+            "region_id": ["rosto_completo_1", "rosto_completo_1", "fundo", "fundo"],
+            "region_label": ["rosto completo 1", "rosto completo 1", "fundo", "fundo"],
+            "region_type": ["rosto_completo", "rosto_completo", "fundo", "fundo"],
+            "track_id": ["face_1", "face_1", "global", "global"],
+            "label": ["Fake", "Fake", "Fake", "Fake"],
+            "lbp_r1_p8_face_uniformity": [0.20, 0.30, 0.10, 0.14],
+        }
+    )
+
+    aggregated = aggregate_video_region_features(frame_metrics, groups="a", video_id="video_01", label="Fake")
+
+    assert set(aggregated["region"]) == {"rosto_completo_1", "fundo"}
+    assert set(aggregated["video_id"]) == {"video_01"}
+    assert "lbp_r1_p8_face_uniformity_mean" in aggregated.columns
 
 
 def test_lbp_uses_histogram_features_at_multiple_scales() -> None:

@@ -22,6 +22,9 @@ stages:
       --videos-dir ${pipeline.videos_dir}
       --metadata-dir ${pipeline.metadata_dir}
       --detect-every ${pipeline.detect_every}
+      --face-model ${pipeline.face_model}
+      --segmenter-model ${pipeline.segmenter_model}
+      --max-faces ${pipeline.max_faces}
     deps:
       - src
       - ${pipeline.manifest}
@@ -41,6 +44,9 @@ stages:
       --groups ${pipeline.groups}
       --generate-missing-metadata ${pipeline.generate_missing_metadata}
       --overwrite-metadata ${pipeline.overwrite_metadata}
+      --face-model ${pipeline.face_model}
+      --segmenter-model ${pipeline.segmenter_model}
+      --max-faces ${pipeline.max_faces}
     deps:
       - src
       - ${pipeline.manifest}

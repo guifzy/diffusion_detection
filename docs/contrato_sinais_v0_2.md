@@ -8,8 +8,8 @@ pipeline e documentacao durante a etapa de consolidacao metodologica.
 | --- | --- |
 | Versao do pipeline | `0.2.0` |
 | Codigo canonico | `src/shared/features/` |
-| Unidade atual de extracao | Frame, com uma face dominante e regioes `face`, `border` e `background` |
-| Unidade atual de agregacao | Video, por media, desvio-padrao e mediana dos atributos por frame |
+| Unidade atual de extracao | Frame e regiao MediaPipe |
+| Unidade atual de agregacao | Video e regiao, por media, desvio-padrao e mediana dos atributos por frame |
 | Fora do escopo atual | Reflexos oculares, temporalidade ordenada e sombra geometrica 3D |
 
 ## Principios gerais
@@ -24,15 +24,30 @@ descritas como analise temporal.
 
 ## Regioes e padronizacao
 
-Todo frame e limitado a 640 pixels no maior lado antes da extracao. A caixa
-facial e escalada pelo mesmo fator. A partir da caixa padronizada, sao
-construidas tres regioes:
+Todo frame e limitado a 640 pixels no maior lado antes da extracao. As regioes
+sao detectadas no pre-processamento com MediaPipe e reescaladas pelo mesmo
+fator durante a extracao de sinais.
+
+O metadado de cada frame pode conter multiplas pessoas. Para cada identidade
+facial, o pipeline gera regioes `rosto_completo`, `olhos`, `boca` e `corpo`.
+O `fundo` e registrado como regiao global do frame.
+
+| Regiao no Gold | Origem | Interpretacao |
+| --- | --- | --- |
+| `rosto_completo_1`, `rosto_completo_2`, ... | FaceLandmarker | Malha facial completa da pessoa detectada |
+| `olhos_1`, `olhos_2`, ... | Subconjunto dos landmarks faciais | Regiao ocular combinada |
+| `boca_1`, `boca_2`, ... | Subconjunto dos landmarks faciais | Regiao oral |
+| `corpo_1`, `corpo_2`, ... | ImageSegmenter ou fallback geometrico | Regiao corporal associada a face |
+| `fundo` | Complemento das regioes ocupadas | Contexto de fundo do frame |
+
+Os extratores A-E continuam recebendo internamente tres mascaras chamadas
+`face`, `border` e `background`. No novo contrato, esses nomes sao operacionais:
 
 | Regiao | Definicao operacional | Interpretacao |
 | --- | --- | --- |
-| `face` | Area interna da caixa facial | Conteudo facial principal |
-| `border` | Anel ao redor da face dentro da caixa expandida | Transicao face-contexto |
-| `background` | Area externa a caixa expandida | Contexto visual local/global disponivel no frame |
+| `face` | Mascara da regiao-alvo da linha | Pode representar rosto, olhos, boca, corpo ou fundo |
+| `border` | Anel ao redor da regiao-alvo | Transicao alvo-contexto |
+| `background` | Mascara de contexto restante | Fundo ou complemento disponivel no frame |
 
 ## Contrastes regionais
 
