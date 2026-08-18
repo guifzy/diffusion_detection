@@ -16,6 +16,7 @@ from src.shared.features.group_c import compute_residual_metrics
 from src.shared.features.group_d import compute_fft_metrics
 from src.shared.features.group_e import compute_photometry_metrics, compute_shadow_metrics
 from src.shared.video import create_face_regions, metadata_for_frame
+from src.data_engineering.preprocessing.metadata import _assign_track_id
 
 
 def _frame_and_regions(size: int = 128):
@@ -127,6 +128,18 @@ def test_region_aggregation_keeps_one_row_per_video_region() -> None:
     assert set(aggregated["region"]) == {"rosto_completo_1", "fundo"}
     assert set(aggregated["video_id"]) == {"video_01"}
     assert "lbp_r1_p8_face_uniformity_mean" in aggregated.columns
+
+
+def test_track_assignment_does_not_reuse_id_within_same_frame() -> None:
+    tracks = {}
+    used = set()
+
+    first = _assign_track_id([10, 10, 40, 40], tracks, frame_id=0, used_track_ids=used)
+    second = _assign_track_id([14, 14, 44, 44], tracks, frame_id=0, used_track_ids=used)
+
+    assert first == 1
+    assert second == 2
+    assert used == {1, 2}
 
 
 def test_lbp_uses_histogram_features_at_multiple_scales() -> None:

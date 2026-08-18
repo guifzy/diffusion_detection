@@ -45,7 +45,7 @@ O repositório roda localmente, mas já foi desenhado para evoluir para armazena
 | Python | Implementação dos pipelines e dos extratores |
 | yt-dlp | Download dos vídeos de entrada |
 | OpenCV | Leitura de frames e processamento visual |
-| MediaPipe | Landmarks faciais, regiões de rosto/olhos/boca e segmentação corpo/fundo |
+| MediaPipe | Detecção facial, landmarks de rosto/olhos/boca e segmentação corpo/fundo |
 | pandas / pyarrow | Tabelas CSV/Parquet |
 | DVC | Execução reprodutível e versionamento de dados |
 | MinIO | Storage S3-like local |
@@ -667,9 +667,12 @@ pipeline:
   groups: abcde
   max_frames:
   detect_every: 1
+  face_detector_model: models/face_detector.task
   face_model: experimentos/grupo_b/data/extracted/face_landmarker.task
   segmenter_model: models/image_segmenter.task
   max_faces: 10
+  face_detection_confidence: 0.3
+  face_landmark_confidence: 0.3
   limit:
   url_column: link
   label_column: label

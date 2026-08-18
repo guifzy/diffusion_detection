@@ -28,13 +28,15 @@ Todo frame e limitado a 640 pixels no maior lado antes da extracao. As regioes
 sao detectadas no pre-processamento com MediaPipe e reescaladas pelo mesmo
 fator durante a extracao de sinais.
 
-O metadado de cada frame pode conter multiplas pessoas. Para cada identidade
-facial, o pipeline gera regioes `rosto_completo`, `olhos`, `boca` e `corpo`.
-O `fundo` e registrado como regiao global do frame.
+O metadado de cada frame pode conter multiplas pessoas. O FaceDetector localiza
+as caixas faciais no frame completo e em janelas sobrepostas; em seguida, o
+FaceLandmarker e aplicado sobre crops expandidos para recuperar a malha facial.
+Para cada identidade facial, o pipeline gera regioes `rosto_completo`, `olhos`,
+`boca` e `corpo`. O `fundo` e registrado como regiao global do frame.
 
 | Regiao no Gold | Origem | Interpretacao |
 | --- | --- | --- |
-| `rosto_completo_1`, `rosto_completo_2`, ... | FaceLandmarker | Malha facial completa da pessoa detectada |
+| `rosto_completo_1`, `rosto_completo_2`, ... | FaceDetector + FaceLandmarker | Malha facial completa da pessoa detectada |
 | `olhos_1`, `olhos_2`, ... | Subconjunto dos landmarks faciais | Regiao ocular combinada |
 | `boca_1`, `boca_2`, ... | Subconjunto dos landmarks faciais | Regiao oral |
 | `corpo_1`, `corpo_2`, ... | ImageSegmenter ou fallback geometrico | Regiao corporal associada a face |

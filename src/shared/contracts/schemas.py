@@ -139,6 +139,8 @@ CONTRACTS = {
         accepted_values={
             "source": (
                 "mediapipe_face_landmarker",
+                "mediapipe_face_detector",
+                "mediapipe_face_detector_landmarker",
                 "mediapipe_image_segmenter",
                 "computed_background",
                 "fallback_center",

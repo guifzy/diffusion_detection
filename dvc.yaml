@@ -22,9 +22,12 @@ stages:
       --videos-dir ${pipeline.videos_dir}
       --metadata-dir ${pipeline.metadata_dir}
       --detect-every ${pipeline.detect_every}
+      --face-detector-model ${pipeline.face_detector_model}
       --face-model ${pipeline.face_model}
       --segmenter-model ${pipeline.segmenter_model}
       --max-faces ${pipeline.max_faces}
+      --face-detection-confidence ${pipeline.face_detection_confidence}
+      --face-landmark-confidence ${pipeline.face_landmark_confidence}
     deps:
       - src
       - ${pipeline.manifest}
@@ -44,9 +47,12 @@ stages:
       --groups ${pipeline.groups}
       --generate-missing-metadata ${pipeline.generate_missing_metadata}
       --overwrite-metadata ${pipeline.overwrite_metadata}
+      --face-detector-model ${pipeline.face_detector_model}
       --face-model ${pipeline.face_model}
       --segmenter-model ${pipeline.segmenter_model}
       --max-faces ${pipeline.max_faces}
+      --face-detection-confidence ${pipeline.face_detection_confidence}
+      --face-landmark-confidence ${pipeline.face_landmark_confidence}
     deps:
       - src
       - ${pipeline.manifest}

@@ -52,6 +52,13 @@ def _default_face_model_path() -> Path:
     return PROJECT_ROOT / "experimentos" / "grupo_b" / "data" / "extracted" / "face_landmarker.task"
 
 
+def _default_face_detector_model_path() -> Path:
+    env_path = os.environ.get("MEDIAPIPE_FACE_DETECTOR_MODEL")
+    if env_path:
+        return Path(env_path)
+    return PROJECT_ROOT / "models" / "face_detector.task"
+
+
 def _default_segmenter_model_path() -> Path:
     env_path = os.environ.get("MEDIAPIPE_SEGMENTER_MODEL")
     if env_path:
@@ -72,7 +79,21 @@ def _load_mediapipe_modules():
     return mp, python, vision
 
 
-def _create_face_landmarker(model_path: str | Path | None = None, max_faces: int = 10):
+def _create_face_detector(model_path: str | Path | None = None, min_confidence: float = 0.3):
+    mp, python, vision = _load_mediapipe_modules()
+    model = Path(model_path) if model_path else _default_face_detector_model_path()
+    if not model.exists():
+        logger.warning("MediaPipe face detector model not found: %s. Landmarker will be tried on full frame.", model)
+        return mp, None
+    options = vision.FaceDetectorOptions(
+        base_options=python.BaseOptions(model_asset_path=str(model)),
+        running_mode=vision.RunningMode.IMAGE,
+        min_detection_confidence=min_confidence,
+    )
+    return mp, vision.FaceDetector.create_from_options(options)
+
+
+def _create_face_landmarker(model_path: str | Path | None = None, max_faces: int = 10, min_confidence: float = 0.3):
     mp, python, vision = _load_mediapipe_modules()
     model = Path(model_path) if model_path else _default_face_model_path()
     if not model.exists():
@@ -83,6 +104,9 @@ def _create_face_landmarker(model_path: str | Path | None = None, max_faces: int
         output_face_blendshapes=False,
         output_facial_transformation_matrixes=False,
         num_faces=max_faces,
+        min_face_detection_confidence=min_confidence,
+        min_face_presence_confidence=min_confidence,
+        min_tracking_confidence=min_confidence,
     )
     return mp, vision.FaceLandmarker.create_from_options(options)
 
@@ -97,6 +121,7 @@ def _create_image_segmenter(model_path: str | Path | None = None):
         base_options=python.BaseOptions(model_asset_path=str(model)),
         running_mode=vision.RunningMode.IMAGE,
         output_category_mask=True,
+        output_confidence_masks=True,
     )
     return mp, vision.ImageSegmenter.create_from_options(options)
 
@@ -106,16 +131,26 @@ def _mp_image(mp_module, frame):
     return mp_module.Image(image_format=mp_module.ImageFormat.SRGB, data=rgb_frame)
 
 
-def _landmark_rows(face_landmarks, width: int, height: int) -> list[dict[str, float]]:
+def _landmark_rows(
+    face_landmarks,
+    width: int,
+    height: int,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    output_width: int | None = None,
+    output_height: int | None = None,
+) -> list[dict[str, float]]:
+    output_width = output_width or width
+    output_height = output_height or height
     rows = []
     for idx, landmark in enumerate(face_landmarks):
-        px = float(np.clip(landmark.x * (width - 1), 0, width - 1))
-        py = float(np.clip(landmark.y * (height - 1), 0, height - 1))
+        px = float(np.clip(offset_x + landmark.x * (width - 1), 0, output_width - 1))
+        py = float(np.clip(offset_y + landmark.y * (height - 1), 0, output_height - 1))
         rows.append(
             {
                 "point_id": int(idx),
-                "x": float(landmark.x),
-                "y": float(landmark.y),
+                "x": float(px / max(output_width - 1, 1)),
+                "y": float(py / max(output_height - 1, 1)),
                 "z": float(landmark.z),
                 "px": px,
                 "py": py,
@@ -150,13 +185,139 @@ def _bbox_center(bbox) -> tuple[float, float]:
     return (float((x1 + x2) / 2), float((y1 + y2) / 2))
 
 
-def _assign_track_id(bbox, tracks: dict[int, dict[str, Any]], frame_id: int) -> int:
+def _bbox_iou(left, right) -> float:
+    lx1, ly1, lx2, ly2 = left
+    rx1, ry1, rx2, ry2 = right
+    ix1 = max(lx1, rx1)
+    iy1 = max(ly1, ry1)
+    ix2 = min(lx2, rx2)
+    iy2 = min(ly2, ry2)
+    iw = max(0, ix2 - ix1)
+    ih = max(0, iy2 - iy1)
+    inter = iw * ih
+    left_area = max(0, lx2 - lx1) * max(0, ly2 - ly1)
+    right_area = max(0, rx2 - rx1) * max(0, ry2 - ry1)
+    union = left_area + right_area - inter
+    return float(inter / union) if union else 0.0
+
+
+def _expand_crop(bbox, width: int, height: int, padding: float = 0.45):
+    x1, y1, x2, y2 = bbox
+    bw = x2 - x1
+    bh = y2 - y1
+    return clip_bbox(
+        [x1 - padding * bw, y1 - padding * bh, x2 + padding * bw, y2 + padding * bh],
+        width,
+        height,
+        min_size=8,
+    )
+
+
+def _search_windows(width: int, height: int) -> list[tuple[int, int, int, int]]:
+    ratios = [
+        (0.0, 0.0, 1.0, 1.0),
+        (0.0, 0.0, 1.0, 0.60),
+        (0.0, 0.15, 1.0, 0.75),
+        (0.0, 0.35, 1.0, 1.0),
+        (0.0, 0.0, 0.70, 0.70),
+        (0.30, 0.0, 1.0, 0.70),
+        (0.0, 0.20, 0.70, 0.90),
+        (0.30, 0.20, 1.0, 0.90),
+    ]
+    windows = []
+    seen = set()
+    for x1r, y1r, x2r, y2r in ratios:
+        x1 = int(round(x1r * width))
+        y1 = int(round(y1r * height))
+        x2 = int(round(x2r * width))
+        y2 = int(round(y2r * height))
+        bbox = clip_bbox([x1, y1, x2, y2], width, height, min_size=32)
+        if bbox is None:
+            continue
+        key = tuple(bbox)
+        if key not in seen:
+            windows.append(key)
+            seen.add(key)
+    return windows
+
+
+def _detect_face_boxes(mp_module, face_box_detector, frame, max_faces: int) -> list[dict[str, Any]]:
+    if face_box_detector is None:
+        return []
+    h, w = frame.shape[:2]
+    boxes = []
+    for wx1, wy1, wx2, wy2 in _search_windows(w, h):
+        crop = frame[wy1:wy2, wx1:wx2]
+        if crop.size == 0:
+            continue
+        result = face_box_detector.detect(_mp_image(mp_module, crop))
+        for detection in result.detections or []:
+            box = detection.bounding_box
+            bbox = clip_bbox(
+                [wx1 + box.origin_x, wy1 + box.origin_y, wx1 + box.origin_x + box.width, wy1 + box.origin_y + box.height],
+                w,
+                h,
+                min_size=8,
+            )
+            if bbox is None:
+                continue
+            confidence = None
+            if detection.categories:
+                confidence = float(detection.categories[0].score)
+            boxes.append({"bbox": bbox, "confidence": confidence, "source": "mediapipe_face_detector"})
+
+    boxes = sorted(boxes, key=lambda item: item["confidence"] if item["confidence"] is not None else 0.0, reverse=True)
+    deduped = []
+    for item in boxes:
+        if all(_bbox_iou(item["bbox"], kept["bbox"]) < 0.35 for kept in deduped):
+            deduped.append(item)
+        if len(deduped) >= max_faces:
+            break
+    return sorted(deduped, key=lambda item: (item["bbox"][0], item["bbox"][1]))
+
+
+def _landmarks_for_crop(mp_module, face_landmarker, frame, bbox, output_width: int, output_height: int):
+    crop_bbox = _expand_crop(bbox, output_width, output_height)
+    if crop_bbox is None:
+        return []
+    x1, y1, x2, y2 = crop_bbox
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        return []
+    result = face_landmarker.detect(_mp_image(mp_module, crop))
+    faces = []
+    for face_landmarks in result.face_landmarks or []:
+        points = _landmark_rows(
+            face_landmarks,
+            crop.shape[1],
+            crop.shape[0],
+            offset_x=x1,
+            offset_y=y1,
+            output_width=output_width,
+            output_height=output_height,
+        )
+        face_bbox = _bbox_from_points(points, output_width, output_height)
+        if face_bbox is not None:
+            faces.append({"points": points, "bbox": face_bbox})
+    return faces
+
+
+def _assign_track_id(
+    bbox,
+    tracks: dict[int, dict[str, Any]],
+    frame_id: int,
+    used_track_ids: set[int] | None = None,
+) -> int:
+    if used_track_ids is None:
+        used_track_ids = set()
     center = _bbox_center(bbox)
     x1, y1, x2, y2 = bbox
     scale = max(float(x2 - x1), float(y2 - y1), 1.0)
     best_track = None
     best_distance = float("inf")
     for track_id, track in tracks.items():
+        if track_id in used_track_ids:
+            continue
         previous = track["center"]
         distance = float(np.hypot(center[0] - previous[0], center[1] - previous[1]))
         if distance < best_distance and distance <= max(scale * 1.5, 48.0):
@@ -164,7 +325,10 @@ def _assign_track_id(bbox, tracks: dict[int, dict[str, Any]], frame_id: int) -> 
             best_distance = distance
     if best_track is None:
         best_track = max(tracks.keys(), default=0) + 1
+        while best_track in used_track_ids:
+            best_track += 1
     tracks[best_track] = {"center": center, "bbox": bbox, "last_seen": frame_id}
+    used_track_ids.add(best_track)
     return best_track
 
 
@@ -172,17 +336,33 @@ def _segment_person_mask(mp_module, segmenter, frame) -> np.ndarray | None:
     if segmenter is None:
         return None
     result = segmenter.segment(_mp_image(mp_module, frame))
+    if result.confidence_masks:
+        mask = result.confidence_masks[0].numpy_view()
+        return (np.squeeze(mask) > 0.5).astype(np.uint8)
     if result.category_mask is None:
         return None
-    mask = result.category_mask.numpy_view()
+    mask = np.squeeze(result.category_mask.numpy_view())
     if mask.dtype.kind in {"f", "c"}:
         return (mask > 0.5).astype(np.uint8)
+    unique = set(np.unique(mask).tolist())
+    if unique <= {0, 255}:
+        return (mask == 0).astype(np.uint8)
     return (mask > 0).astype(np.uint8)
 
 
 def _component_bbox_for_face(person_mask: np.ndarray | None, face_bbox):
     if person_mask is None or person_mask.sum() == 0:
         return None
+    h, w = person_mask.shape[:2]
+    local_body_bbox = _fallback_body_bbox(face_bbox, w, h)
+    if local_body_bbox is not None:
+        x1, y1, x2, y2 = local_body_bbox
+        local_mask = np.zeros_like(person_mask, dtype=np.uint8)
+        local_mask[y1:y2, x1:x2] = person_mask[y1:y2, x1:x2]
+        local_bbox = bbox_from_mask(local_mask, min_size=4)
+        if local_bbox is not None:
+            return local_bbox
+
     count, labels, stats, _centroids = cv2.connectedComponentsWithStats(person_mask.astype(np.uint8), connectivity=8)
     cx, cy = _bbox_center(face_bbox)
     best = None
@@ -276,8 +456,11 @@ def extract_face_metadata(
     allow_fallback: bool = True,
     save_silver: bool = True,
     face_model_path: str | Path | None = None,
+    face_detector_model_path: str | Path | None = None,
     segmenter_model_path: str | Path | None = None,
     max_faces: int = 10,
+    face_detection_confidence: float = 0.3,
+    face_landmark_confidence: float = 0.3,
 ) -> list[dict[str, Any]]:
     """Extract MediaPipe regions used by all feature groups.
 
@@ -291,12 +474,22 @@ def extract_face_metadata(
     output_path = Path(output_path) if output_path else metadata_path_for_video(video_path, METADATA_DIR)
     processed_at = datetime.now(timezone.utc).isoformat()
 
-    face_detector = None
-    mp_face = None
+    face_box_detector = None
+    mp_face_detector = None
+    face_landmarker = None
+    mp_face_landmarker = None
     segmenter = None
     mp_segmenter = None
     try:
-        mp_face, face_detector = _create_face_landmarker(face_model_path, max_faces=max_faces)
+        mp_face_detector, face_box_detector = _create_face_detector(
+            face_detector_model_path,
+            min_confidence=face_detection_confidence,
+        )
+        mp_face_landmarker, face_landmarker = _create_face_landmarker(
+            face_model_path,
+            max_faces=max_faces,
+            min_confidence=face_landmark_confidence,
+        )
         mp_segmenter, segmenter = _create_image_segmenter(segmenter_model_path)
     except (RuntimeError, FileNotFoundError) as exc:
         if not allow_fallback:
@@ -311,18 +504,56 @@ def extract_face_metadata(
         frame_regions: list[dict[str, Any]] = []
         person_mask = _segment_person_mask(mp_segmenter, segmenter, frame) if mp_segmenter is not None else None
         face_landmarks = []
+        face_candidates = []
+        used_track_ids: set[int] = set()
 
         use_detection = sample_idx % max(1, detect_every) == 0
-        if face_detector is not None and mp_face is not None and use_detection:
-            result = face_detector.detect(_mp_image(mp_face, frame))
-            face_landmarks = list(result.face_landmarks or [])
+        if face_landmarker is not None and mp_face_landmarker is not None and use_detection:
+            detector_boxes = _detect_face_boxes(mp_face_detector, face_box_detector, frame, max_faces=max_faces)
+            for detected in detector_boxes:
+                crop_faces = _landmarks_for_crop(mp_face_landmarker, face_landmarker, frame, detected["bbox"], w, h)
+                if crop_faces:
+                    for crop_face in crop_faces:
+                        crop_face["source"] = "mediapipe_face_detector_landmarker"
+                        crop_face["confidence"] = detected.get("confidence")
+                        face_candidates.append(crop_face)
+                else:
+                    face_candidates.append(
+                        {
+                            "points": [],
+                            "bbox": detected["bbox"],
+                            "source": "mediapipe_face_detector",
+                            "confidence": detected.get("confidence"),
+                        }
+                    )
 
-        for face_landmark in face_landmarks:
-            points = _landmark_rows(face_landmark, w, h)
-            face_bbox = _bbox_from_points(points, w, h)
-            if face_bbox is None:
-                continue
-            track_id = _assign_track_id(face_bbox, tracks, int(frame_id))
+            if not face_candidates:
+                result = face_landmarker.detect(_mp_image(mp_face_landmarker, frame))
+                face_landmarks = list(result.face_landmarks or [])
+                for face_landmark in face_landmarks:
+                    points = _landmark_rows(face_landmark, w, h)
+                    face_bbox = _bbox_from_points(points, w, h)
+                    if face_bbox is not None:
+                        face_candidates.append(
+                            {
+                                "points": points,
+                                "bbox": face_bbox,
+                                "source": "mediapipe_face_landmarker",
+                                "confidence": 1.0,
+                            }
+                        )
+
+        deduped_candidates = []
+        for candidate in sorted(face_candidates, key=lambda item: item.get("confidence") or 0.0, reverse=True):
+            if all(_bbox_iou(candidate["bbox"], kept["bbox"]) < 0.35 for kept in deduped_candidates):
+                deduped_candidates.append(candidate)
+            if len(deduped_candidates) >= max_faces:
+                break
+
+        for candidate in sorted(deduped_candidates, key=lambda item: (item["bbox"][0], item["bbox"][1])):
+            points = candidate.get("points", [])
+            face_bbox = candidate["bbox"]
+            track_id = _assign_track_id(face_bbox, tracks, int(frame_id), used_track_ids=used_track_ids)
 
             face_polygon = _polygon_from_points(points)
             eyes_points = _points_for_indices(points, LEFT_EYE_INDICES + RIGHT_EYE_INDICES)
@@ -335,10 +566,10 @@ def extract_face_metadata(
                     FACE_REGION_NAME,
                     track_id,
                     face_bbox,
-                    "mediapipe_face_landmarker",
+                    candidate.get("source", "mediapipe_face_landmarker"),
                     polygon=face_polygon,
                     landmarks=points,
-                    confidence=1.0,
+                    confidence=candidate.get("confidence"),
                 )
             )
             if eyes_bbox is not None:
@@ -385,7 +616,7 @@ def extract_face_metadata(
         if not frame_regions and allow_fallback:
             fallback_bbox = fallback_center_bbox(frame)
             if fallback_bbox is not None:
-                track_id = _assign_track_id(fallback_bbox, tracks, int(frame_id))
+                track_id = _assign_track_id(fallback_bbox, tracks, int(frame_id), used_track_ids=used_track_ids)
                 frame_regions.append(
                     _region_entry(
                         FACE_REGION_NAME,
@@ -443,7 +674,7 @@ def extract_face_metadata(
             }
         )
 
-    for model in (face_detector, segmenter):
+    for model in (face_box_detector, face_landmarker, segmenter):
         close = getattr(model, "close", None)
         if callable(close):
             close()
@@ -552,8 +783,11 @@ def process_catalog(
     detect_every: int = 1,
     overwrite: bool = False,
     face_model_path: str | Path | None = None,
+    face_detector_model_path: str | Path | None = None,
     segmenter_model_path: str | Path | None = None,
     max_faces: int = 10,
+    face_detection_confidence: float = 0.3,
+    face_landmark_confidence: float = 0.3,
 ) -> list[Path]:
     import pandas as pd
 
@@ -582,8 +816,11 @@ def process_catalog(
             max_frames=max_frames,
             detect_every=detect_every,
             face_model_path=face_model_path,
+            face_detector_model_path=face_detector_model_path,
             segmenter_model_path=segmenter_model_path,
             max_faces=max_faces,
+            face_detection_confidence=face_detection_confidence,
+            face_landmark_confidence=face_landmark_confidence,
         )
         outputs.append(output_path)
 
@@ -598,9 +835,12 @@ def main() -> None:
     parser.add_argument("--metadata-dir", type=Path, default=METADATA_DIR)
     parser.add_argument("--max-frames", type=int, default=None)
     parser.add_argument("--detect-every", type=int, default=1)
+    parser.add_argument("--face-detector-model", type=Path, default=None)
     parser.add_argument("--face-model", type=Path, default=None)
     parser.add_argument("--segmenter-model", type=Path, default=None)
     parser.add_argument("--max-faces", type=int, default=10)
+    parser.add_argument("--face-detection-confidence", type=float, default=0.3)
+    parser.add_argument("--face-landmark-confidence", type=float, default=0.3)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
@@ -616,9 +856,12 @@ def main() -> None:
             output,
             max_frames=args.max_frames,
             detect_every=args.detect_every,
+            face_detector_model_path=args.face_detector_model,
             face_model_path=args.face_model,
             segmenter_model_path=args.segmenter_model,
             max_faces=args.max_faces,
+            face_detection_confidence=args.face_detection_confidence,
+            face_landmark_confidence=args.face_landmark_confidence,
         )
         return
 
@@ -630,9 +873,12 @@ def main() -> None:
             max_frames=args.max_frames,
             detect_every=args.detect_every,
             overwrite=args.overwrite,
+            face_detector_model_path=args.face_detector_model,
             face_model_path=args.face_model,
             segmenter_model_path=args.segmenter_model,
             max_faces=args.max_faces,
+            face_detection_confidence=args.face_detection_confidence,
+            face_landmark_confidence=args.face_landmark_confidence,
         )
         return
 

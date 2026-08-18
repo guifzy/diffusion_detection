@@ -128,8 +128,10 @@ Na prática, cada grupo de sinais captura uma faceta diferente do problema. A de
 
 O pipeline inclui o módulo `src.data_engineering.preprocessing` para preparar os vídeos e extrair regiões de interesse por frame:
 
-O pré-processamento utiliza MediaPipe para produzir regiões explícitas por
-frame:
+O pré-processamento utiliza MediaPipe em duas etapas: primeiro o FaceDetector
+localiza faces no frame completo e em janelas sobrepostas; depois o
+FaceLandmarker recupera os landmarks em crops expandidos. A partir disso sao
+produzidas regioes explicitas por frame:
 
 - **rosto completo**: malha facial completa associada a cada identidade;
 - **olhos**: subconjunto ocular dos landmarks faciais;

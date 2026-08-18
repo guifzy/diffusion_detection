@@ -68,9 +68,12 @@ def build_gold_dataset(
     max_frames: int | None = None,
     generate_missing_metadata: bool = False,
     overwrite_metadata: bool = False,
+    face_detector_model_path: str | Path | None = None,
     face_model_path: str | Path | None = None,
     segmenter_model_path: str | Path | None = None,
     max_faces: int = 10,
+    face_detection_confidence: float = 0.3,
+    face_landmark_confidence: float = 0.3,
     limit: int | None = None,
     train_ratio: float = 0.7,
     validation_ratio: float = 0.15,
@@ -99,9 +102,12 @@ def build_gold_dataset(
                 video_path,
                 metadata_path,
                 max_frames=max_frames,
+                face_detector_model_path=face_detector_model_path,
                 face_model_path=face_model_path,
                 segmenter_model_path=segmenter_model_path,
                 max_faces=max_faces,
+                face_detection_confidence=face_detection_confidence,
+                face_landmark_confidence=face_landmark_confidence,
             )
 
         if not metadata_path.exists():
@@ -232,9 +238,12 @@ def main() -> None:
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--generate-missing-metadata", action="store_true")
     parser.add_argument("--overwrite-metadata", action="store_true")
+    parser.add_argument("--face-detector-model", type=Path, default=None)
     parser.add_argument("--face-model", type=Path, default=None)
     parser.add_argument("--segmenter-model", type=Path, default=None)
     parser.add_argument("--max-faces", type=int, default=10)
+    parser.add_argument("--face-detection-confidence", type=float, default=0.3)
+    parser.add_argument("--face-landmark-confidence", type=float, default=0.3)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--train-ratio", type=float, default=0.7)
     parser.add_argument("--validation-ratio", type=float, default=0.15)
@@ -252,9 +261,12 @@ def main() -> None:
         max_frames=args.max_frames,
         generate_missing_metadata=args.generate_missing_metadata,
         overwrite_metadata=args.overwrite_metadata,
+        face_detector_model_path=args.face_detector_model,
         face_model_path=args.face_model,
         segmenter_model_path=args.segmenter_model,
         max_faces=args.max_faces,
+        face_detection_confidence=args.face_detection_confidence,
+        face_landmark_confidence=args.face_landmark_confidence,
         limit=args.limit,
         train_ratio=args.train_ratio,
         validation_ratio=args.validation_ratio,
