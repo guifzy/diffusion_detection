@@ -14,6 +14,7 @@ METADATA_DIR = SILVER_DIR / "face_metadata_json"
 SILVER_FACE_METADATA_DIR = SILVER_DIR / "face_metadata"
 SILVER_FRAME_FEATURES_DIR = SILVER_DIR / "frame_features"
 SILVER_VIDEO_FEATURES_DIR = SILVER_DIR / "video_features"
+SILVER_TEMPORAL_FEATURES_DIR = SILVER_DIR / "temporal_features"
 GOLD_DIR = DATA_DIR / "gold"
 REPORTS_DIR = DATA_DIR / "reports"
 REPORTS_LOG_DIR = REPORTS_DIR / "logs"
@@ -32,6 +33,7 @@ def ensure_data_dirs() -> None:
         SILVER_FACE_METADATA_DIR,
         SILVER_FRAME_FEATURES_DIR,
         SILVER_VIDEO_FEATURES_DIR,
+        SILVER_TEMPORAL_FEATURES_DIR,
         GOLD_DIR,
         REPORTS_DIR,
         REPORTS_LOG_DIR,
@@ -59,6 +61,14 @@ def silver_face_metadata_path(video_path: str | Path, silver_dir: str | Path = S
 
 def silver_video_features_path(silver_dir: str | Path = SILVER_DIR) -> Path:
     return Path(silver_dir) / "video_features" / "video_features.parquet"
+
+
+def silver_temporal_features_path(silver_dir: str | Path = SILVER_DIR) -> Path:
+    return Path(silver_dir) / "temporal_features" / "temporal_features.parquet"
+
+
+def gold_video_region_dataset_path(gold_dir: str | Path = GOLD_DIR) -> Path:
+    return Path(gold_dir) / "gold_video_region_dataset.parquet"
 
 
 def gold_training_dataset_path(gold_dir: str | Path = GOLD_DIR) -> Path:

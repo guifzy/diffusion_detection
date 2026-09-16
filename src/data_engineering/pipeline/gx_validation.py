@@ -32,7 +32,7 @@ def _expectations_for_contract(gx, contract_name: str, columns: list[str]) -> li
                 )
             )
 
-    if contract_name in {"video_features", "gold_training_dataset"} and "missing_feature_ratio" in columns:
+    if contract_name in {"video_features", "gold_video_region_dataset", "gold_training_dataset"} and "missing_feature_ratio" in columns:
         expectations.append(
             gx.expectations.ExpectColumnValuesToBeBetween(
                 column="missing_feature_ratio",
@@ -41,7 +41,16 @@ def _expectations_for_contract(gx, contract_name: str, columns: list[str]) -> li
             )
         )
 
-    if contract_name == "gold_training_dataset" and "is_trainable" in columns:
+    if contract_name == "temporal_features" and "temporal_missing_feature_ratio" in columns:
+        expectations.append(
+            gx.expectations.ExpectColumnValuesToBeBetween(
+                column="temporal_missing_feature_ratio",
+                min_value=0.0,
+                max_value=1.0,
+            )
+        )
+
+    if contract_name in {"gold_video_region_dataset", "gold_training_dataset"} and "is_trainable" in columns:
         expectations.append(
             gx.expectations.ExpectColumnValuesToBeInSet(
                 column="is_trainable",

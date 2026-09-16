@@ -8,7 +8,9 @@ stages:
       --url-column "${pipeline.url_column}"
       --label-column "${pipeline.label_column}"
     deps:
-      - src
+      - src/data_engineering/ingestion
+      - src/shared/contracts
+      - src/shared/core
       - ${pipeline.source_csv}
     outs:
       - data/bronze/manifests/bronze_manifest.csv
@@ -21,6 +23,8 @@ stages:
       --manifest ${pipeline.manifest}
       --videos-dir ${pipeline.videos_dir}
       --metadata-dir ${pipeline.metadata_dir}
+      --max-frames ${pipeline.max_frames}
+      --sample-fps ${pipeline.sample_fps}
       --detect-every ${pipeline.detect_every}
       --face-detector-model ${pipeline.face_detector_model}
       --face-model ${pipeline.face_model}
@@ -45,6 +49,9 @@ stages:
       --videos-dir ${pipeline.videos_dir}
       --metadata-dir ${pipeline.metadata_dir}
       --groups ${pipeline.groups}
+      --max-frames ${pipeline.max_frames}
+      --sample-fps ${pipeline.sample_fps}
+      --temporal-min-points ${pipeline.temporal_min_points}
       --generate-missing-metadata ${pipeline.generate_missing_metadata}
       --overwrite-metadata ${pipeline.overwrite_metadata}
       --face-detector-model ${pipeline.face_detector_model}
@@ -63,6 +70,10 @@ stages:
           persist: true
       - data/silver/video_features:
           persist: true
+      - data/silver/temporal_features:
+          persist: true
+      - data/gold/gold_video_region_dataset.parquet:
+          persist: true
       - data/gold/gold_training_dataset.parquet:
           persist: true
 
@@ -78,6 +89,8 @@ stages:
       - data/silver/face_metadata
       - data/silver/frame_features
       - data/silver/video_features
+      - data/silver/temporal_features
+      - data/gold/gold_video_region_dataset.parquet
       - data/gold/gold_training_dataset.parquet
     outs:
       - data/reports/logs:

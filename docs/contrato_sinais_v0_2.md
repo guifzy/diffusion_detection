@@ -1,4 +1,4 @@
-# Contrato cientifico dos sinais v0.2.0
+# Contrato cientifico dos sinais v0.3.0
 
 Este documento define a fonte de verdade dos atributos extraidos no nivel de
 frame pelos grupos A-E. O objetivo e impedir divergencia entre notebooks,
@@ -6,11 +6,12 @@ pipeline e documentacao durante a etapa de consolidacao metodologica.
 
 | Campo | Definicao |
 | --- | --- |
-| Versao do pipeline | `0.2.0` |
+| Versao do pipeline | `0.3.0` |
 | Codigo canonico | `src/shared/features/` |
 | Unidade atual de extracao | Frame e regiao MediaPipe |
-| Unidade atual de agregacao | Video e regiao, por media, desvio-padrao e mediana dos atributos por frame |
-| Fora do escopo atual | Reflexos oculares, temporalidade ordenada e sombra geometrica 3D |
+| Unidade atual de agregacao regional | Video e regiao, por estatisticas estaticas e temporais |
+| Unidade atual de Gold final | Video, com regioes consolidadas por `region_type` |
+| Fora do escopo atual | Reflexos oculares, optical flow, rPPG e sombra geometrica 3D |
 
 ## Principios gerais
 
@@ -18,15 +19,18 @@ Os notebooks experimentais importam os extratores canonicos e nao devem manter
 formulas independentes. Qualquer mudanca de formula, nome de coluna ou
 interpretacao exige nova versao ou registro explicito de migracao.
 
-A versao `0.2.0` implementa sinais estaticos. As agregacoes por video sao
-resumos estatisticos invariantes a ordem dos frames; portanto, nao devem ser
-descritas como analise temporal.
+A versao `0.3.0` implementa sinais estaticos e derivados temporais calculados
+sobre series ordenadas por `timestamp_s`. As agregacoes estaticas por video
+continuam existindo, mas a Gold final de treino passa a combinar informacao
+estatica e temporal em uma linha por video.
 
 ## Regioes e padronizacao
 
 Todo frame e limitado a 640 pixels no maior lado antes da extracao. As regioes
 sao detectadas no pre-processamento com MediaPipe e reescaladas pelo mesmo
-fator durante a extracao de sinais.
+fator durante a extracao de sinais. O FPS original e preservado em
+`video_fps`, enquanto `sample_fps` define a taxa efetiva de analise para
+comparabilidade entre videos.
 
 O metadado de cada frame pode conter multiplas pessoas. O FaceDetector localiza
 as caixas faciais no frame completo e em janelas sobrepostas; em seguida, o
@@ -77,15 +81,55 @@ d_n = \frac{x_A - x_B}{|x_A| + |x_B| + 10^{-6}}
 Distancias entre orientacoes usam distancia circular, e nao subtracao linear de
 angulos.
 
+## Temporalidade
+
+A temporalidade e calculada depois da extracao dos sinais por frame e antes da
+Gold final. Para cada serie escalar \(x_t\), ordenada por `timestamp_s` dentro
+de `video_id`, `region`, `region_type` e `track_id`, sao computadas derivadas
+discretas em tempo fisico.
+
+Primeira ordem:
+
+\[
+\Delta x_t =
+\frac{x_t - x_{t-1}}{t_t - t_{t-1}}
+\]
+
+Segunda ordem:
+
+\[
+\Delta^2 x_t =
+\frac{\Delta x_t - \Delta x_{t-1}}{\tau_t - \tau_{t-1}}
+\]
+
+em que \(\tau_t\) representa o instante medio associado a primeira diferenca.
+Em amostragem uniforme, a segunda ordem se aproxima de:
+
+\[
+\Delta^2 x_t \approx x_{t+1} - 2x_t + x_{t-1}
+\]
+
+Para cada serie temporal sao emitidas estatisticas robustas de primeira e
+segunda ordem: media, desvio-padrao, mediana, MAD, IQR e percentil 95 absoluto.
+Tambem sao emitidas autocorrelacoes de lag 1 e lag 2 e descritores de frequencia
+temporal. Colunas `qc_` ficam fora da temporalizacao.
+
+| Artefato | Grao | Interpretacao |
+| --- | --- | --- |
+| `silver/frame_features` | video, frame e regiao | Sinais estaticos A-E |
+| `silver/temporal_features` | video, regiao e track | Derivadas temporais e persistencia |
+| `gold/gold_video_region_dataset.parquet` | video e regiao | EDA e ablacao regional |
+| `gold/gold_training_dataset.parquet` | video | Treino e serving |
+
 ## Familias de sinais
 
 | Grupo | Familia | Papel metodologico | Status |
 | --- | --- | --- | --- |
-| A | LBP, Sobel e Laplaciano | Textura, bordas, orientacao e altas frequencias espaciais | Consolidado com ressalvas pontuais |
+| A | LBP, Sobel e Laplaciano | Textura, bordas, orientacao e altas frequencias espaciais | Consolidado com temporalidade |
 | B | SIFT e similaridade de patches | Estrutura local e repeticao de padroes | Exploratorio controlado |
 | C | Residuo bilateral | Baseline de alta passagem | Baseline, sem interpretacao como ruido de sensor |
-| D | FFT espacial | Distribuicao de potencia em frequencia | Consolidado para sinais estaticos |
-| E | Fotometria e candidatos de sombra | Estatisticas regionais de luz, cor e baixa iluminacao | Proxy fotometrico, nao modelo fisico completo |
+| D | FFT espacial | Distribuicao de potencia em frequencia | Consolidado com temporalidade |
+| E | Fotometria e candidatos de sombra | Estatisticas regionais de luz, cor e baixa iluminacao | Proxy fotometrico temporal, nao modelo fisico completo |
 
 ---
 

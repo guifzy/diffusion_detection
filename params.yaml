@@ -4,7 +4,9 @@ pipeline:
   videos_dir: data/bronze/videos
   metadata_dir: data/silver/face_metadata_json
   groups: abcde
-  max_frames:
+  max_frames: 4
+  sample_fps: 5.0
+  temporal_min_points: 3
   detect_every: 1
   face_detector_model: models/face_detector.task
   face_model: experimentos/grupo_b/data/extracted/face_landmarker.task

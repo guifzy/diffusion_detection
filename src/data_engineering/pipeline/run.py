@@ -70,6 +70,7 @@ def run_preprocess(
     videos_dir: str | Path = BRONZE_VIDEOS_DIR,
     metadata_dir: str | Path = METADATA_DIR,
     max_frames: int | None = None,
+    sample_fps: float | None = None,
     detect_every: int = 1,
     overwrite: bool = False,
     limit: int | None = None,
@@ -92,6 +93,7 @@ def run_preprocess(
             videos_dir,
             metadata_dir=metadata_dir,
             max_frames=max_frames,
+            sample_fps=sample_fps,
             detect_every=detect_every,
             overwrite=overwrite,
             face_detector_model_path=face_detector_model,
@@ -113,6 +115,7 @@ def run_preprocess(
         videos_dir,
         metadata_dir=metadata_dir,
         max_frames=max_frames,
+        sample_fps=sample_fps,
         detect_every=detect_every,
         overwrite=overwrite,
         face_detector_model_path=face_detector_model,
@@ -132,6 +135,8 @@ def run_gold(
     metadata_dir: str | Path = METADATA_DIR,
     groups: str = "abcde",
     max_frames: int | None = None,
+    sample_fps: float | None = None,
+    temporal_min_points: int = 3,
     generate_missing_metadata: bool = False,
     overwrite_metadata: bool = False,
     limit: int | None = None,
@@ -152,6 +157,8 @@ def run_gold(
         metadata_dir=metadata_dir,
         groups=groups,
         max_frames=max_frames,
+        sample_fps=sample_fps,
+        temporal_min_points=temporal_min_points,
         generate_missing_metadata=generate_missing_metadata,
         overwrite_metadata=overwrite_metadata,
         limit=limit,
@@ -245,6 +252,7 @@ def run_build(args: argparse.Namespace) -> dict:
             videos_dir=args.videos_dir,
             metadata_dir=args.metadata_dir,
             max_frames=args.max_frames,
+            sample_fps=args.sample_fps,
             detect_every=args.detect_every,
             overwrite=args.overwrite_metadata,
             limit=args.limit,
@@ -264,6 +272,8 @@ def run_build(args: argparse.Namespace) -> dict:
             metadata_dir=args.metadata_dir,
             groups=args.groups,
             max_frames=args.max_frames,
+            sample_fps=args.sample_fps,
+            temporal_min_points=args.temporal_min_points,
             generate_missing_metadata=args.generate_missing_metadata,
             overwrite_metadata=gold_overwrite_metadata,
             limit=args.limit,
@@ -307,6 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
     preprocess = subparsers.add_parser("preprocess", parents=[runtime_paths], help="Build Silver face metadata.")
     preprocess.add_argument("--manifest", "--catalog", dest="manifest", type=Path, default=BRONZE_MANIFEST_PATH)
     preprocess.add_argument("--max-frames", type=int)
+    preprocess.add_argument("--sample-fps", type=float)
     preprocess.add_argument("--detect-every", type=int, default=1)
     preprocess.add_argument("--face-detector-model", type=Path)
     preprocess.add_argument("--face-model", type=Path)
@@ -321,6 +332,8 @@ def build_parser() -> argparse.ArgumentParser:
     gold.add_argument("--manifest", "--catalog", dest="manifest", type=Path, default=BRONZE_MANIFEST_PATH)
     gold.add_argument("--groups", default="abcde")
     gold.add_argument("--max-frames", type=int)
+    gold.add_argument("--sample-fps", type=float)
+    gold.add_argument("--temporal-min-points", type=int, default=3)
     gold.add_argument("--generate-missing-metadata", nargs="?", const=True, default=False, type=parse_bool)
     gold.add_argument("--overwrite-metadata", nargs="?", const=True, default=False, type=parse_bool)
     gold.add_argument("--face-detector-model", type=Path)
@@ -347,6 +360,8 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--label-column", default="label")
     build.add_argument("--groups", default="abcde")
     build.add_argument("--max-frames", type=int)
+    build.add_argument("--sample-fps", type=float)
+    build.add_argument("--temporal-min-points", type=int, default=3)
     build.add_argument("--detect-every", type=int, default=1)
     build.add_argument("--face-detector-model", type=Path)
     build.add_argument("--face-model", type=Path)
@@ -392,6 +407,7 @@ def main() -> None:
             args.videos_dir,
             args.metadata_dir,
             max_frames=args.max_frames,
+            sample_fps=args.sample_fps,
             detect_every=args.detect_every,
             overwrite=args.overwrite,
             limit=args.limit,
@@ -411,6 +427,8 @@ def main() -> None:
             args.metadata_dir,
             groups=args.groups,
             max_frames=args.max_frames,
+            sample_fps=args.sample_fps,
+            temporal_min_points=args.temporal_min_points,
             generate_missing_metadata=args.generate_missing_metadata,
             overwrite_metadata=args.overwrite_metadata,
             limit=args.limit,

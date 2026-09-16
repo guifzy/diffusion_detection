@@ -13,8 +13,10 @@ CSV link,label
 -> Bronze: videos e manifesto de ingestão
 -> Silver: metadata facial
 -> Silver: features por frame
+-> Silver: features temporais
 -> Silver: features por vídeo
--> Gold: dataset oficial de treinamento
+-> Gold regional: dataset por vídeo/região para EDA
+-> Gold final: dataset por vídeo para treinamento
 -> Reports: qualidade, métricas, plots e logs
 -> MinIO: cache DVC versionado e lake navegável
 ```
@@ -70,8 +72,10 @@ CI/CD está fora do escopo desta etapa, mas a estrutura atual já deixa o projet
 │   │   ├── face_metadata_json/
 │   │   ├── face_metadata/
 │   │   ├── frame_features/
-│   │   └── video_features/
+│   │   ├── video_features/
+│   │   └── temporal_features/
 │   ├── gold/
+│   │   ├── gold_video_region_dataset.parquet
 │   │   └── gold_training_dataset.parquet
 │   └── reports/
 │       ├── pipeline_latest.json
@@ -109,7 +113,9 @@ Contratos atuais:
 | `frame_metadata` | Silver | uma linha por frame e região | Metadata MediaPipe, região e origem da bbox |
 | `frame_features` | Silver | uma linha por frame e região | Sinais A-E por frame e região |
 | `video_features` | Silver | uma linha por vídeo e região | Agregações por vídeo/região |
-| `gold_training_dataset` | Gold | uma linha por vídeo e região | Dataset pronto para treino e EDA por região |
+| `temporal_features` | Silver | uma linha por vídeo, região e track | Derivadas e resumos temporais dos sinais |
+| `gold_video_region_dataset` | Gold | uma linha por vídeo e região | Dataset para EDA e ablação regional |
+| `gold_training_dataset` | Gold | uma linha por vídeo | Dataset final para treino e serving |
 | `prediction_payload` | Serving | uma resposta por vídeo | Contrato futuro da API |
 
 ### CSV De Entrada Bronze
@@ -207,6 +213,13 @@ Campos principais:
 ```text
 video_id
 frame_id
+timestamp_s
+video_fps
+sample_fps
+frame_count
+duration_s
+original_frame_width
+original_frame_height
 bbox_x1, bbox_y1, bbox_x2, bbox_y2
 bbox_expanded_x1, bbox_expanded_y1, bbox_expanded_x2, bbox_expanded_y2
 source
@@ -217,16 +230,20 @@ processed_at
 pipeline_version
 ```
 
-O campo `source` explica de onde veio a bbox:
+O campo `source` explica de onde veio a região:
 
 ```text
-detector
-tracker
-last_bbox
+mediapipe_face_detector
+mediapipe_face_landmarker
+mediapipe_face_detector_landmarker
+mediapipe_image_segmenter
+computed_background
 fallback_center
+fallback_body_geometry
 ```
 
-Isso permite medir se o pipeline realmente conseguiu detectar faces ou se usou fallback demais.
+Isso permite medir se o pipeline realmente conseguiu detectar faces, corpo e
+fundo ou se usou fallback demais.
 
 ### Silver Features
 
@@ -237,6 +254,7 @@ Saídas:
 ```text
 data/silver/frame_features/{video_id}.parquet
 data/silver/video_features/video_features.parquet
+data/silver/temporal_features/temporal_features.parquet
 ```
 
 Grupos atuais:
@@ -250,9 +268,11 @@ Grupos atuais:
 | E | Fotometria regional | luminância, crominância, assimetria e candidatos de sombra |
 
 As fórmulas, nomes e limites de interpretação da versão atual estão definidos
-em `docs/contrato_sinais_v0_2.md`. Temporalidade e reflexos oculares não
-integram esta versão; sombras são tratadas como candidatos fotométricos, sem
-validação geométrica 3D.
+em `docs/contrato_sinais_v0_2.md` e no README raiz. A versão atual materializa
+temporalidade sobre sinais canônicos por meio de primeira diferença, segunda
+diferença, autocorrelação e energia temporal. Reflexos oculares, optical flow,
+rPPG e geometria 3D ainda não integram esta versão; sombras são tratadas como
+candidatos fotométricos, sem validação geométrica 3D.
 
 A extração centralizada fica em:
 
@@ -262,13 +282,19 @@ src/shared/features/extractor.py
 
 ### Gold
 
-Responsável por gerar o dataset oficial para treinamento.
+Responsável por gerar os datasets oficiais para análise e treinamento.
 
-Saída:
+Saídas:
 
 ```text
+data/gold/gold_video_region_dataset.parquet
 data/gold/gold_training_dataset.parquet
 ```
+
+`gold_video_region_dataset.parquet` mantém o grão vídeo/região e deve ser usado
+para EDA, diagnóstico e ablação regional. `gold_training_dataset.parquet`
+consolida as regiões por `region_type` e possui uma linha por vídeo, sendo o
+artefato recomendado para treino e serving.
 
 Campos de governança:
 
@@ -313,7 +339,10 @@ O relatório principal informa:
 - cobertura facial;
 - fallback ratio;
 - features processadas;
+- features temporais processadas;
 - missing feature ratio;
+- temporal missing feature ratio;
+- quantidade de linhas Gold regionais;
 - quantidade de linhas Gold;
 - quantidade de linhas treináveis;
 - distribuição Real/Fake;
@@ -372,7 +401,7 @@ dvc repro
 Isso executa:
 
 ```text
-Bronze -> Silver metadata -> Silver features/Gold -> validação
+Bronze -> Silver metadata -> Silver static/temporal features -> Gold regional/final -> validação
 ```
 
 Depois:

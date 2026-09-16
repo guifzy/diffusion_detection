@@ -6,6 +6,7 @@ import pandas as pd
 
 from src.shared.features.common import aggregate_video_metrics, prepare_annotated_region_contexts, region_contrasts
 from src.shared.features.extractor import aggregate_video_region_features
+from src.shared.features.temporal import aggregate_region_temporal_features
 from src.shared.features.group_a import (
     compute_laplacian_metrics,
     compute_lbp_metrics,
@@ -128,6 +129,28 @@ def test_region_aggregation_keeps_one_row_per_video_region() -> None:
     assert set(aggregated["region"]) == {"rosto_completo_1", "fundo"}
     assert set(aggregated["video_id"]) == {"video_01"}
     assert "lbp_r1_p8_face_uniformity_mean" in aggregated.columns
+
+
+def test_temporal_features_use_timestamp_scaled_derivatives() -> None:
+    frame_metrics = pd.DataFrame(
+        {
+            "video_id": ["video_01"] * 4,
+            "frame_id": [0, 1, 2, 3],
+            "timestamp_s": [0.0, 0.5, 1.0, 1.5],
+            "region": ["rosto_completo_1"] * 4,
+            "region_type": ["rosto_completo"] * 4,
+            "track_id": ["face_1"] * 4,
+            "label": ["Fake"] * 4,
+            "lbp_face_entropy_norm": [0.0, 1.0, 4.0, 9.0],
+        }
+    )
+
+    temporal = aggregate_region_temporal_features(frame_metrics, groups="a", min_points=3)
+
+    assert len(temporal) == 1
+    row = temporal.iloc[0]
+    assert row["temporal__lbp_face_entropy_norm__d1_mean"] == 6.0
+    assert row["temporal__lbp_face_entropy_norm__d2_mean"] == 8.0
 
 
 def test_track_assignment_does_not_reuse_id_within_same_frame() -> None:

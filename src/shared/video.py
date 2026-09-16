@@ -7,26 +7,60 @@ from typing import Any
 import cv2
 import numpy as np
 
-def get_video_frame_count(video_path: str | Path) -> int:
+
+def get_video_properties(video_path: str | Path) -> dict[str, float | int]:
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        return 0
-    count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        return {
+            "frame_count": 0,
+            "fps": 0.0,
+            "width": 0,
+            "height": 0,
+            "duration_s": 0.0,
+        }
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     cap.release()
-    return count
+    duration_s = float(frame_count / fps) if fps > 0 else 0.0
+    return {
+        "frame_count": frame_count,
+        "fps": fps,
+        "width": width,
+        "height": height,
+        "duration_s": duration_s,
+    }
 
 
-def sample_frame_indices(frame_count: int, max_frames: int | None = None) -> np.ndarray:
+def get_video_frame_count(video_path: str | Path) -> int:
+    return int(get_video_properties(video_path)["frame_count"])
+
+
+def sample_frame_indices(
+    frame_count: int,
+    max_frames: int | None = None,
+    fps: float | None = None,
+    sample_fps: float | None = None,
+) -> np.ndarray:
     if frame_count <= 0:
         return np.array([], dtype=int)
-    if max_frames is None or frame_count <= max_frames:
-        return np.arange(frame_count, dtype=int)
-    return np.linspace(0, frame_count - 1, int(max_frames)).astype(int)
+    if sample_fps is not None and sample_fps > 0 and fps is not None and fps > 0:
+        step = max(int(round(float(fps) / float(sample_fps))), 1)
+        indices = np.arange(0, frame_count, step, dtype=int)
+    else:
+        indices = np.arange(frame_count, dtype=int)
+    if max_frames is not None and len(indices) > max_frames:
+        selected = np.linspace(0, len(indices) - 1, int(max_frames)).astype(int)
+        indices = indices[selected]
+    return np.unique(indices.astype(int))
 
 
-def iter_sampled_frames(video_path: str | Path, max_frames: int | None = None):
-    frame_count = get_video_frame_count(video_path)
-    indices = sample_frame_indices(frame_count, max_frames)
+def iter_sampled_frames(video_path: str | Path, max_frames: int | None = None, sample_fps: float | None = None):
+    properties = get_video_properties(video_path)
+    frame_count = int(properties["frame_count"])
+    fps = float(properties["fps"])
+    indices = sample_frame_indices(frame_count, max_frames=max_frames, fps=fps, sample_fps=sample_fps)
     wanted = set(int(i) for i in indices)
 
     cap = cv2.VideoCapture(str(video_path))
@@ -41,8 +75,13 @@ def iter_sampled_frames(video_path: str | Path, max_frames: int | None = None):
     cap.release()
 
 
-def load_video_frames(video_path: str | Path, max_frames: int | None = None, return_indices: bool = False):
-    rows = list(iter_sampled_frames(video_path, max_frames=max_frames))
+def load_video_frames(
+    video_path: str | Path,
+    max_frames: int | None = None,
+    return_indices: bool = False,
+    sample_fps: float | None = None,
+):
+    rows = list(iter_sampled_frames(video_path, max_frames=max_frames, sample_fps=sample_fps))
     if rows:
         indices, frames, _ = zip(*rows)
         frame_count = rows[0][2]

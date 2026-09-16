@@ -35,6 +35,13 @@ BRONZE_SOURCE_COLUMNS = (
 FRAME_METADATA_COLUMNS = (
     "video_id",
     "frame_id",
+    "timestamp_s",
+    "video_fps",
+    "sample_fps",
+    "frame_count",
+    "duration_s",
+    "original_frame_width",
+    "original_frame_height",
     "region",
     "region_id",
     "region_label",
@@ -59,6 +66,16 @@ FRAME_METADATA_COLUMNS = (
 FRAME_FEATURES_COLUMNS = (
     "video_id",
     "frame_id",
+    "timestamp_s",
+    "video_fps",
+    "sample_fps",
+    "frame_count",
+    "duration_s",
+    "original_frame_width",
+    "original_frame_height",
+    "standardized_frame_width",
+    "standardized_frame_height",
+    "standardized_max_size",
     "metadata_idx",
     "region",
     "region_type",
@@ -82,10 +99,34 @@ VIDEO_FEATURES_EXTRA_COLUMNS = (
     "missing_feature_ratio",
 )
 
-GOLD_TRAINING_EXTRA_COLUMNS = (
+TEMPORAL_FEATURES_EXTRA_COLUMNS = (
     "video_id",
     "region",
     "region_type",
+    "track_id",
+    "n_temporal_frames",
+    "temporal_min_points",
+    "temporal_time_span_s",
+    "feature_groups_used",
+    "aggregated_at",
+    "pipeline_version",
+    "temporal_missing_feature_ratio",
+)
+
+GOLD_VIDEO_REGION_EXTRA_COLUMNS = (
+    "video_id",
+    "region",
+    "region_type",
+    "target_label",
+    "dataset_split",
+    "is_trainable",
+    "quality_flag",
+    "missing_feature_ratio",
+    "pipeline_version",
+)
+
+GOLD_TRAINING_EXTRA_COLUMNS = (
+    "video_id",
     "target_label",
     "dataset_split",
     "is_trainable",
@@ -163,10 +204,28 @@ CONTRACTS = {
         required_columns=VIDEO_FEATURES_EXTRA_COLUMNS,
         description="Video-level aggregation of frame features before ML curation.",
     ),
+    "temporal_features": DataContract(
+        name="temporal_features",
+        layer="silver",
+        grain="one row per video, region and track",
+        required_columns=TEMPORAL_FEATURES_EXTRA_COLUMNS,
+        description="Temporal derivatives and temporal summaries from ordered frame-level signals.",
+    ),
+    "gold_video_region_dataset": DataContract(
+        name="gold_video_region_dataset",
+        layer="gold",
+        grain="one row per trainable video and region",
+        required_columns=GOLD_VIDEO_REGION_EXTRA_COLUMNS,
+        accepted_values={
+            "dataset_split": ("train", "validation", "test", "unassigned"),
+            "quality_flag": ("ok", "review", "insufficient_metadata", "missing_label", "feature_failure"),
+        },
+        description="ML-curated regional dataset used for EDA and regional ablations.",
+    ),
     "gold_training_dataset": DataContract(
         name="gold_training_dataset",
         layer="gold",
-        grain="one row per trainable video and region",
+        grain="one row per trainable video",
         required_columns=GOLD_TRAINING_EXTRA_COLUMNS,
         accepted_values={
             "dataset_split": ("train", "validation", "test", "unassigned"),

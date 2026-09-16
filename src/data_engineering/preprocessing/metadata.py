@@ -23,6 +23,7 @@ from src.shared.video import (
     bbox_from_mask,
     clip_bbox,
     create_face_regions,
+    get_video_properties,
     iter_sampled_frames,
     save_metadata,
 )
@@ -452,6 +453,7 @@ def extract_face_metadata(
     video_path: str | Path,
     output_path: str | Path | None = None,
     max_frames: int | None = None,
+    sample_fps: float | None = None,
     detect_every: int = 1,
     allow_fallback: bool = True,
     save_silver: bool = True,
@@ -473,6 +475,10 @@ def extract_face_metadata(
     video_id = video_path.stem
     output_path = Path(output_path) if output_path else metadata_path_for_video(video_path, METADATA_DIR)
     processed_at = datetime.now(timezone.utc).isoformat()
+    video_properties = get_video_properties(video_path)
+    video_fps = float(video_properties["fps"])
+    frame_count_total = int(video_properties["frame_count"])
+    duration_s = float(video_properties["duration_s"])
 
     face_box_detector = None
     mp_face_detector = None
@@ -499,8 +505,11 @@ def extract_face_metadata(
     metadata: list[dict[str, Any]] = []
     tracks: dict[int, dict[str, Any]] = {}
 
-    for sample_idx, (frame_id, frame, _frame_count) in enumerate(iter_sampled_frames(video_path, max_frames=max_frames)):
+    for sample_idx, (frame_id, frame, _frame_count) in enumerate(
+        iter_sampled_frames(video_path, max_frames=max_frames, sample_fps=sample_fps)
+    ):
         h, w = frame.shape[:2]
+        timestamp_s = float(frame_id / video_fps) if video_fps > 0 else float(frame_id)
         frame_regions: list[dict[str, Any]] = []
         person_mask = _segment_person_mask(mp_segmenter, segmenter, frame) if mp_segmenter is not None else None
         face_landmarks = []
@@ -659,6 +668,13 @@ def extract_face_metadata(
             {
                 "video_id": video_id,
                 "frame_id": int(frame_id),
+                "timestamp_s": timestamp_s,
+                "video_fps": video_fps,
+                "sample_fps": float(sample_fps) if sample_fps else video_fps,
+                "frame_count": frame_count_total,
+                "duration_s": duration_s,
+                "original_frame_width": int(video_properties["width"]),
+                "original_frame_height": int(video_properties["height"]),
                 "bbox": [int(v) for v in primary_bbox],
                 "bbox_expanded": [int(v) for v in expanded],
                 "source": primary["source"],
@@ -708,6 +724,13 @@ def metadata_to_frame_contract_rows(metadata: list[dict[str, Any]]) -> list[dict
                 {
                     "video_id": item.get("video_id", ""),
                     "frame_id": item.get("frame_id"),
+                    "timestamp_s": item.get("timestamp_s"),
+                    "video_fps": item.get("video_fps"),
+                    "sample_fps": item.get("sample_fps"),
+                    "frame_count": item.get("frame_count"),
+                    "duration_s": item.get("duration_s"),
+                    "original_frame_width": item.get("original_frame_width", item.get("frame_width")),
+                    "original_frame_height": item.get("original_frame_height", item.get("frame_height")),
                     "region": region.get("region", region.get("region_id", "")),
                     "region_id": region.get("region_id", region.get("region", "")),
                     "region_label": region.get("region_label", ""),
@@ -780,6 +803,7 @@ def process_catalog(
     videos_dir: str | Path,
     metadata_dir: str | Path = METADATA_DIR,
     max_frames: int | None = None,
+    sample_fps: float | None = None,
     detect_every: int = 1,
     overwrite: bool = False,
     face_model_path: str | Path | None = None,
@@ -814,6 +838,7 @@ def process_catalog(
             video_path,
             output_path,
             max_frames=max_frames,
+            sample_fps=sample_fps,
             detect_every=detect_every,
             face_model_path=face_model_path,
             face_detector_model_path=face_detector_model_path,
@@ -834,6 +859,7 @@ def main() -> None:
     parser.add_argument("--videos-dir", type=Path, default=BRONZE_VIDEOS_DIR)
     parser.add_argument("--metadata-dir", type=Path, default=METADATA_DIR)
     parser.add_argument("--max-frames", type=int, default=None)
+    parser.add_argument("--sample-fps", type=float, default=None)
     parser.add_argument("--detect-every", type=int, default=1)
     parser.add_argument("--face-detector-model", type=Path, default=None)
     parser.add_argument("--face-model", type=Path, default=None)
@@ -855,6 +881,7 @@ def main() -> None:
             args.video,
             output,
             max_frames=args.max_frames,
+            sample_fps=args.sample_fps,
             detect_every=args.detect_every,
             face_detector_model_path=args.face_detector_model,
             face_model_path=args.face_model,
@@ -871,6 +898,7 @@ def main() -> None:
             args.videos_dir,
             metadata_dir=args.metadata_dir,
             max_frames=args.max_frames,
+            sample_fps=args.sample_fps,
             detect_every=args.detect_every,
             overwrite=args.overwrite,
             face_detector_model_path=args.face_detector_model,

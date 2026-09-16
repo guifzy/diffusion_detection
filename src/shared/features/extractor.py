@@ -57,6 +57,7 @@ def extract_video_frame_features(
     metadata_path: str | Path,
     groups: Iterable[str] | str = "abcde",
     max_frames: int | None = None,
+    sample_fps: float | None = None,
     label: str | None = None,
 ) -> pd.DataFrame:
     frame_features = extract_frame_metrics(
@@ -64,6 +65,7 @@ def extract_video_frame_features(
         metadata_path,
         metric_functions_for_groups(groups),
         max_frames=max_frames,
+        sample_fps=sample_fps,
         label=label,
     )
     if not frame_features.empty:
@@ -171,6 +173,7 @@ def build_video_features(
     metadata_path: str | Path,
     groups: Iterable[str] | str = "abcde",
     max_frames: int | None = None,
+    sample_fps: float | None = None,
     label: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     frame_features = extract_video_frame_features(
@@ -178,6 +181,7 @@ def build_video_features(
         metadata_path,
         groups=groups,
         max_frames=max_frames,
+        sample_fps=sample_fps,
         label=label,
     )
     video_features = aggregate_video_region_features(

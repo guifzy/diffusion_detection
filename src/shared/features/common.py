@@ -10,6 +10,7 @@ from src.shared.video import (
     clip_bbox,
     create_face_regions,
     create_region_context,
+    get_video_properties,
     iter_sampled_frames,
     load_metadata,
     metadata_for_frame,
@@ -195,17 +196,23 @@ def extract_frame_metrics(
     metadata_path: str | Path,
     metric_functions,
     max_frames: int | None = None,
+    sample_fps: float | None = None,
     label: str | None = None,
 ) -> pd.DataFrame:
     metadata = load_metadata(metadata_path)
+    video_properties = get_video_properties(video_path)
+    video_fps = float(video_properties["fps"])
+    frame_count_total = int(video_properties["frame_count"])
+    duration_s = float(video_properties["duration_s"])
     rows = []
-    for frame_idx, frame, frame_count in iter_sampled_frames(video_path, max_frames=max_frames):
+    for frame_idx, frame, frame_count in iter_sampled_frames(video_path, max_frames=max_frames, sample_fps=sample_fps):
         meta, metadata_idx = metadata_for_frame(frame_idx, frame_count, metadata)
         if meta is None:
             continue
         frame_std, region_contexts = prepare_annotated_region_contexts(frame, meta)
         if not region_contexts:
             continue
+        timestamp_s = float(frame_idx / video_fps) if video_fps > 0 else float(frame_idx)
 
         for context in region_contexts:
             features = {
@@ -213,6 +220,16 @@ def extract_frame_metrics(
                 "video_name": Path(video_path).name,
                 "frame_id": int(frame_idx),
                 "frame": int(frame_idx),
+                "timestamp_s": timestamp_s,
+                "video_fps": video_fps,
+                "sample_fps": float(sample_fps) if sample_fps else video_fps,
+                "frame_count": frame_count_total,
+                "duration_s": duration_s,
+                "original_frame_width": int(video_properties["width"]),
+                "original_frame_height": int(video_properties["height"]),
+                "standardized_frame_width": int(frame_std.shape[1]),
+                "standardized_frame_height": int(frame_std.shape[0]),
+                "standardized_max_size": FEATURE_MAX_FRAME_SIZE,
                 "metadata_idx": metadata_idx,
                 "metadata_region_index": context["metadata_region_index"],
                 "region": context["region"],

@@ -12,9 +12,11 @@ from src.shared.core.paths import (
     METADATA_DIR,
     REPORTS_DIR,
     SILVER_DIR,
+    gold_video_region_dataset_path,
     gold_training_dataset_path,
     pipeline_metrics_path,
     pipeline_plot_path,
+    silver_temporal_features_path,
     silver_video_features_path,
 )
 from src.shared.core.version import PIPELINE_VERSION
@@ -65,6 +67,14 @@ def collect_pipeline_tables(
         "frame_metadata": (frame_metadata, str(silver_dir / "face_metadata")),
         "frame_features": (frame_features, str(silver_dir / "frame_features")),
         "video_features": (_read_optional_table(silver_video_features_path(silver_dir)), str(silver_video_features_path(silver_dir))),
+        "temporal_features": (
+            _read_optional_table(silver_temporal_features_path(silver_dir)),
+            str(silver_temporal_features_path(silver_dir)),
+        ),
+        "gold_video_region_dataset": (
+            _read_optional_table(gold_video_region_dataset_path(gold_dir)),
+            str(gold_video_region_dataset_path(gold_dir)),
+        ),
         "gold_training_dataset": (
             _read_optional_table(gold_training_dataset_path(gold_dir)),
             str(gold_training_dataset_path(gold_dir)),
@@ -151,10 +161,17 @@ def silver_features_quality(silver_dir: str | Path = SILVER_DIR) -> dict:
     frame_tables = _current_version_only(frame_tables)
     video_features = _read_optional_table(silver_video_features_path(silver_dir))
     video_features = _current_version_only(video_features)
+    temporal_features = _read_optional_table(silver_temporal_features_path(silver_dir))
+    temporal_features = _current_version_only(temporal_features)
 
     avg_missing = (
         float(video_features["missing_feature_ratio"].mean())
         if not video_features.empty and "missing_feature_ratio" in video_features
+        else 0.0
+    )
+    avg_temporal_missing = (
+        float(temporal_features["temporal_missing_feature_ratio"].mean())
+        if not temporal_features.empty and "temporal_missing_feature_ratio" in temporal_features
         else 0.0
     )
     return {
@@ -164,15 +181,22 @@ def silver_features_quality(silver_dir: str | Path = SILVER_DIR) -> dict:
         "videos_with_frame_features": int(frame_tables["video_id"].nunique()) if "video_id" in frame_tables else 0,
         "videos_processed": int(video_features["video_id"].nunique()) if "video_id" in video_features else 0,
         "video_region_rows": int(len(video_features)),
+        "temporal_rows": int(len(temporal_features)),
+        "videos_with_temporal_features": int(temporal_features["video_id"].nunique())
+        if "video_id" in temporal_features
+        else 0,
         "avg_missing_feature_ratio": avg_missing,
+        "avg_temporal_missing_feature_ratio": avg_temporal_missing,
     }
 
 
 def gold_quality(gold_dir: str | Path = GOLD_DIR) -> dict:
     gold = _read_optional_table(gold_training_dataset_path(gold_dir))
+    gold_region = _read_optional_table(gold_video_region_dataset_path(gold_dir))
     if gold.empty:
         return {
             "rows": 0,
+            "region_rows": int(len(gold_region)),
             "trainable_rows": 0,
             "real_count": 0,
             "fake_count": 0,
@@ -185,6 +209,7 @@ def gold_quality(gold_dir: str | Path = GOLD_DIR) -> dict:
     quality_flags = gold["quality_flag"].fillna("").value_counts().to_dict() if "quality_flag" in gold else {}
     return {
         "rows": int(len(gold)),
+        "region_rows": int(len(gold_region)),
         "trainable_rows": int(gold["is_trainable"].fillna(False).astype(bool).sum()) if "is_trainable" in gold else 0,
         "real_count": int((labels == "Real").sum()),
         "fake_count": int((labels == "Fake").sum()),
@@ -218,6 +243,8 @@ def validate_pipeline_assets(
         results.append(validate_dataframe_contract(frame_features, "frame_features", Path(silver_dir) / "frame_features"))
 
     results.append(validate_table_contract(silver_video_features_path(silver_dir), "video_features"))
+    results.append(validate_table_contract(silver_temporal_features_path(silver_dir), "temporal_features"))
+    results.append(validate_table_contract(gold_video_region_dataset_path(gold_dir), "gold_video_region_dataset"))
     results.append(validate_table_contract(gold_training_dataset_path(gold_dir), "gold_training_dataset"))
     return summarize_validation_results(results)
 
@@ -259,6 +286,8 @@ def blocking_errors_for_report(
         errors.append("silver_metadata_empty")
     if silver_features.get("videos_processed", 0) <= 0:
         errors.append("silver_video_features_empty")
+    if silver_features.get("videos_with_temporal_features", 0) <= 0:
+        errors.append("silver_temporal_features_empty")
     if fail_on_empty_gold and gold.get("rows", 0) <= 0:
         errors.append("gold_dataset_empty")
     if fail_on_empty_gold and gold.get("trainable_rows", 0) <= 0:
@@ -281,10 +310,16 @@ def build_metrics_summary(report: dict) -> dict:
         "silver_metadata_videos": report.get("silver_metadata", {}).get("videos_processed", 0),
         "silver_metadata_fallback_center_ratio": report.get("silver_metadata", {}).get("fallback_center_ratio", 0.0),
         "silver_features_videos": report.get("silver_features", {}).get("videos_processed", 0),
+        "silver_temporal_videos": report.get("silver_features", {}).get("videos_with_temporal_features", 0),
+        "silver_temporal_rows": report.get("silver_features", {}).get("temporal_rows", 0),
         "silver_features_avg_missing_feature_ratio": report.get("silver_features", {}).get(
             "avg_missing_feature_ratio", 0.0
         ),
+        "silver_temporal_avg_missing_feature_ratio": report.get("silver_features", {}).get(
+            "avg_temporal_missing_feature_ratio", 0.0
+        ),
         "gold_rows": report.get("gold", {}).get("rows", 0),
+        "gold_region_rows": report.get("gold", {}).get("region_rows", 0),
         "gold_trainable_rows": report.get("gold", {}).get("trainable_rows", 0),
         "gold_real_count": report.get("gold", {}).get("real_count", 0),
         "gold_fake_count": report.get("gold", {}).get("fake_count", 0),
@@ -326,6 +361,16 @@ def write_quality_artifacts(report: dict, reports_dir: str | Path = REPORTS_DIR)
             "stage": "silver_features",
             "metric": "videos_processed",
             "value": report.get("silver_features", {}).get("videos_processed", 0),
+        },
+        {
+            "stage": "silver_temporal",
+            "metric": "temporal_rows",
+            "value": report.get("silver_features", {}).get("temporal_rows", 0),
+        },
+        {
+            "stage": "gold_region",
+            "metric": "rows",
+            "value": report.get("gold", {}).get("region_rows", 0),
         },
         {"stage": "gold", "metric": "rows", "value": report.get("gold", {}).get("rows", 0)},
         {"stage": "gold", "metric": "trainable_rows", "value": report.get("gold", {}).get("trainable_rows", 0)},
