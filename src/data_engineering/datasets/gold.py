@@ -14,6 +14,7 @@ from src.shared.core.paths import (
     BRONZE_VIDEOS_DIR,
     GOLD_DIR,
     METADATA_DIR,
+    SILVER_DIR,
     ensure_data_dirs,
     gold_video_region_dataset_path,
     gold_training_dataset_path,
@@ -68,7 +69,34 @@ REGION_METADATA_COLUMNS = {
     "pipeline_version",
     "missing_feature_ratio",
     "temporal_missing_feature_ratio",
+    "benchmark_dataset",
+    "df26_relative_path",
+    "df26_clip_id",
+    "df26_scenario",
+    "df26_generator",
+    "df26_generator_canonical",
+    "df26_generator_family",
+    "df26_generator_availability",
+    "df26_training_role",
+    "df26_allowed_for_training",
+    "df26_allowed_for_evaluation",
+    "df26_license_note",
 }
+
+MANIFEST_GOVERNANCE_COLUMNS = (
+    "benchmark_dataset",
+    "df26_relative_path",
+    "df26_clip_id",
+    "df26_scenario",
+    "df26_generator",
+    "df26_generator_canonical",
+    "df26_generator_family",
+    "df26_generator_availability",
+    "df26_training_role",
+    "df26_allowed_for_training",
+    "df26_allowed_for_evaluation",
+    "df26_license_note",
+)
 
 GOLD_CANONICAL_SIGNAL_TOKENS = (
     "entropy_norm",
@@ -151,6 +179,8 @@ def build_gold_dataset(
     catalog_path: str | Path = BRONZE_MANIFEST_PATH,
     videos_dir: str | Path = BRONZE_VIDEOS_DIR,
     metadata_dir: str | Path = METADATA_DIR,
+    silver_dir: str | Path = SILVER_DIR,
+    gold_dir: str | Path = GOLD_DIR,
     output_path: str | Path | None = None,
     silver_output_path: str | Path | None = None,
     groups: str = "abcde",
@@ -171,8 +201,8 @@ def build_gold_dataset(
     missing_feature_threshold: float = 0.5,
 ) -> pd.DataFrame:
     ensure_data_dirs()
-    output_path = Path(output_path) if output_path else gold_training_dataset_path(GOLD_DIR)
-    silver_output_path = Path(silver_output_path) if silver_output_path else silver_video_features_path()
+    output_path = Path(output_path) if output_path else gold_training_dataset_path(gold_dir)
+    silver_output_path = Path(silver_output_path) if silver_output_path else silver_video_features_path(silver_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     silver_output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -224,7 +254,7 @@ def build_gold_dataset(
             logger.exception("Failed to extract features for %s: %s", video_path, exc)
             continue
 
-        frame_saved_path = write_dataframe(frame_features, silver_frame_features_path(video_path), index=False)
+        frame_saved_path = write_dataframe(frame_features, silver_frame_features_path(video_path, silver_dir), index=False)
         logger.info("Saved Silver frame features for %s to %s", video_path.name, frame_saved_path)
 
         if isinstance(video_features, pd.DataFrame):
@@ -233,12 +263,15 @@ def build_gold_dataset(
             video_features["source_url"] = row.get("source_url", "")
             video_features["storage_path"] = str(video_path)
             video_features["ingestion_status"] = row.get("status", "")
+            video_features = add_manifest_governance_columns(video_features, row)
             rows.extend(video_features.to_dict(orient="records"))
         else:
             video_features["filename"] = video_path.name
             video_features["source_url"] = row.get("source_url", "")
             video_features["storage_path"] = str(video_path)
             video_features["ingestion_status"] = row.get("status", "")
+            for column in MANIFEST_GOVERNANCE_COLUMNS:
+                video_features[column] = row.get(column, "")
             rows.append(video_features)
 
         temporal_features = aggregate_region_temporal_features(
@@ -252,6 +285,7 @@ def build_gold_dataset(
             temporal_features["source_url"] = row.get("source_url", "")
             temporal_features["storage_path"] = str(video_path)
             temporal_features["ingestion_status"] = row.get("status", "")
+            temporal_features = add_manifest_governance_columns(temporal_features, row)
             temporal_rows.extend(temporal_features.to_dict(orient="records"))
 
     silver_video_features = pd.DataFrame(rows)
@@ -259,7 +293,7 @@ def build_gold_dataset(
     logger.info("Saved Silver video features with %s rows to %s", len(silver_video_features), silver_saved_path)
 
     silver_temporal_features = pd.DataFrame(temporal_rows)
-    temporal_saved_path = write_dataframe(silver_temporal_features, silver_temporal_features_path(), index=False)
+    temporal_saved_path = write_dataframe(silver_temporal_features, silver_temporal_features_path(silver_dir), index=False)
     logger.info("Saved Silver temporal features with %s rows to %s", len(silver_temporal_features), temporal_saved_path)
 
     gold_region_dataset = merge_static_temporal_region_features(silver_video_features, silver_temporal_features)
@@ -282,7 +316,7 @@ def build_gold_dataset(
             validation_ratio=validation_ratio,
         )
         gold_region_dataset["pipeline_version"] = gold_region_dataset.get("pipeline_version", PIPELINE_VERSION)
-    regional_saved_path = write_dataframe(gold_region_dataset, gold_video_region_dataset_path(), index=False)
+    regional_saved_path = write_dataframe(gold_region_dataset, gold_video_region_dataset_path(gold_dir), index=False)
     logger.info("Saved Gold video-region dataset with %s rows to %s", len(gold_region_dataset), regional_saved_path)
 
     gold_dataset = build_video_level_gold_dataset(
@@ -320,6 +354,14 @@ def merge_static_temporal_region_features(
     return static_features.merge(temporal, on=merge_keys, how="left")
 
 
+def add_manifest_governance_columns(df: pd.DataFrame, row: pd.Series) -> pd.DataFrame:
+    df = df.copy()
+    for column in MANIFEST_GOVERNANCE_COLUMNS:
+        if column in row.index:
+            df[column] = row.get(column, "")
+    return df
+
+
 def _feature_columns(df: pd.DataFrame) -> list[str]:
     return [
         column
@@ -338,6 +380,13 @@ def _safe_region_prefix(region_type: str) -> str:
 def _max_int_or_zero(values: pd.Series) -> int:
     numeric = pd.to_numeric(values, errors="coerce").dropna()
     return int(numeric.max()) if not numeric.empty else 0
+
+
+def _first_text(group: pd.DataFrame, column: str) -> str:
+    if column not in group.columns:
+        return ""
+    values = group[column].dropna().astype(str)
+    return values.iloc[0] if not values.empty else ""
 
 
 def build_video_level_gold_dataset(
@@ -376,6 +425,8 @@ def build_video_level_gold_dataset(
             "aggregated_at": datetime.now(timezone.utc).isoformat(),
             "pipeline_version": PIPELINE_VERSION,
         }
+        for column in MANIFEST_GOVERNANCE_COLUMNS:
+            row[column] = _first_text(group, column)
 
         for region_type, region_group in group.groupby("region_type", dropna=False):
             prefix = _safe_region_prefix(region_type)
@@ -470,6 +521,8 @@ def main() -> None:
     parser.add_argument("--manifest", "--catalog", dest="manifest", type=Path, default=BRONZE_MANIFEST_PATH)
     parser.add_argument("--videos-dir", type=Path, default=BRONZE_VIDEOS_DIR)
     parser.add_argument("--metadata-dir", type=Path, default=METADATA_DIR)
+    parser.add_argument("--silver-dir", type=Path, default=SILVER_DIR)
+    parser.add_argument("--gold-dir", type=Path, default=GOLD_DIR)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--silver-output", type=Path, default=None)
     parser.add_argument("--groups", default="abcde")
@@ -495,6 +548,8 @@ def main() -> None:
         catalog_path=args.manifest,
         videos_dir=args.videos_dir,
         metadata_dir=args.metadata_dir,
+        silver_dir=args.silver_dir,
+        gold_dir=args.gold_dir,
         output_path=args.output,
         silver_output_path=args.silver_output,
         groups=args.groups,

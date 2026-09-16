@@ -133,6 +133,8 @@ def run_gold(
     catalog_path: str | Path = BRONZE_MANIFEST_PATH,
     videos_dir: str | Path = BRONZE_VIDEOS_DIR,
     metadata_dir: str | Path = METADATA_DIR,
+    silver_dir: str | Path = SILVER_DIR,
+    gold_dir: str | Path = GOLD_DIR,
     groups: str = "abcde",
     max_frames: int | None = None,
     sample_fps: float | None = None,
@@ -155,6 +157,8 @@ def run_gold(
         catalog_path=catalog_path,
         videos_dir=videos_dir,
         metadata_dir=metadata_dir,
+        silver_dir=silver_dir,
+        gold_dir=gold_dir,
         groups=groups,
         max_frames=max_frames,
         sample_fps=sample_fps,
@@ -175,6 +179,10 @@ def run_gold(
 
 def run_validate(
     report_path: str | Path | None = None,
+    manifest_path: str | Path = BRONZE_MANIFEST_PATH,
+    metadata_dir: str | Path = METADATA_DIR,
+    silver_dir: str | Path = SILVER_DIR,
+    gold_dir: str | Path = GOLD_DIR,
     started_at: str | None = None,
     finished_at: str | None = None,
     include_gx: bool = False,
@@ -194,10 +202,10 @@ def run_validate(
     started_at = started_at or now_iso()
     log_pipeline_event("stage_start", "validate_data_contracts", "running", run_id)
     quality = build_quality_report(
-        manifest_path=BRONZE_MANIFEST_PATH,
-        metadata_dir=METADATA_DIR,
-        silver_dir=SILVER_DIR,
-        gold_dir=GOLD_DIR,
+        manifest_path=manifest_path,
+        metadata_dir=metadata_dir,
+        silver_dir=silver_dir,
+        gold_dir=gold_dir,
         include_gx=include_gx,
     )
     report = {
@@ -270,6 +278,8 @@ def run_build(args: argparse.Namespace) -> dict:
             catalog_path=args.manifest,
             videos_dir=args.videos_dir,
             metadata_dir=args.metadata_dir,
+            silver_dir=args.silver_dir,
+            gold_dir=args.gold_dir,
             groups=args.groups,
             max_frames=args.max_frames,
             sample_fps=args.sample_fps,
@@ -287,6 +297,10 @@ def run_build(args: argparse.Namespace) -> dict:
         )
     return run_validate(
         report_path=args.report,
+        manifest_path=args.manifest,
+        metadata_dir=args.metadata_dir,
+        silver_dir=args.silver_dir,
+        gold_dir=args.gold_dir,
         started_at=started_at,
         finished_at=now_iso(),
         include_gx=args.with_gx,
@@ -305,6 +319,8 @@ def build_parser() -> argparse.ArgumentParser:
     runtime_paths = argparse.ArgumentParser(add_help=False)
     runtime_paths.add_argument("--videos-dir", type=Path, default=BRONZE_VIDEOS_DIR)
     runtime_paths.add_argument("--metadata-dir", type=Path, default=METADATA_DIR)
+    runtime_paths.add_argument("--silver-dir", type=Path, default=SILVER_DIR)
+    runtime_paths.add_argument("--gold-dir", type=Path, default=GOLD_DIR)
     runtime_paths.add_argument("--limit", type=int)
 
     ingest = subparsers.add_parser("ingest", parents=[runtime_paths], help="Build/update Bronze videos and manifest.")
@@ -346,6 +362,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = subparsers.add_parser("validate", help="Validate contracts and write a quality report.")
     validate.add_argument("--report", type=Path, default=pipeline_latest_report_path())
+    validate.add_argument("--manifest", type=Path, default=BRONZE_MANIFEST_PATH)
+    validate.add_argument("--metadata-dir", type=Path, default=METADATA_DIR)
+    validate.add_argument("--silver-dir", type=Path, default=SILVER_DIR)
+    validate.add_argument("--gold-dir", type=Path, default=GOLD_DIR)
     validate.add_argument("--with-gx", action="store_true", help="Run optional Great Expectations validation.")
     validate.add_argument("--fail-on-error", action="store_true", help="Exit with code 1 for blocking quality errors.")
     validate.add_argument("--fail-on-gx-error", action="store_true", help="Treat GX failures as blocking errors.")
@@ -425,6 +445,8 @@ def main() -> None:
             args.manifest,
             args.videos_dir,
             args.metadata_dir,
+            silver_dir=args.silver_dir,
+            gold_dir=args.gold_dir,
             groups=args.groups,
             max_frames=args.max_frames,
             sample_fps=args.sample_fps,
@@ -444,6 +466,10 @@ def main() -> None:
     elif args.command == "validate":
         run_validate(
             report_path=args.report,
+            manifest_path=args.manifest,
+            metadata_dir=args.metadata_dir,
+            silver_dir=args.silver_dir,
+            gold_dir=args.gold_dir,
             include_gx=args.with_gx,
             fail_on_error=args.fail_on_error,
             fail_on_gx_error=args.fail_on_gx_error,

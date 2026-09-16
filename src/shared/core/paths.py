@@ -6,6 +6,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "data"
 
+EXTERNAL_DATA_DIR = DATA_DIR / "external"
+DF26_DATASET_DIR = EXTERNAL_DATA_DIR / "df26"
 BRONZE_DIR = DATA_DIR / "bronze"
 BRONZE_VIDEOS_DIR = BRONZE_DIR / "videos"
 BRONZE_MANIFESTS_DIR = BRONZE_DIR / "manifests"
@@ -23,10 +25,14 @@ MODELS_DIR = PROJECT_ROOT / "models"
 
 VIDEO_CATALOG_PATH = BRONZE_MANIFESTS_DIR / "video-metadata-publish-with-links.csv"
 BRONZE_MANIFEST_PATH = BRONZE_MANIFESTS_DIR / "bronze_manifest.csv"
+DF26_MANIFEST_PATH = BRONZE_MANIFESTS_DIR / "bronze_manifest_df26.csv"
+DF26_LOGOS_SPLITS_PATH = BRONZE_MANIFESTS_DIR / "df26_logos_splits.csv"
 
 
 def ensure_data_dirs() -> None:
     for path in [
+        EXTERNAL_DATA_DIR,
+        DF26_DATASET_DIR,
         BRONZE_VIDEOS_DIR,
         BRONZE_MANIFESTS_DIR,
         METADATA_DIR,

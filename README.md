@@ -544,6 +544,58 @@ brew install chromium
 5. Use notebooks em `experimentos/` para análise comparativa e validação metodológica
 6. Integre o dataset Gold ao modelo final
 
+### Benchmark DF26
+
+O repositório possui um fluxo específico para usar o DF26 como benchmark local
+e base inicial de experimentação. O dataset é tratado como `dataset_local`,
+com manifesto Bronze próprio e metadados de licença/protocolo preservados até a
+Gold.
+
+Arquivos principais:
+
+| Artefato | Função |
+|---|---|
+| `src/data_engineering/ingestion/df26.py` | download Hugging Face e conversão DF26 para Bronze |
+| `data/bronze/manifests/bronze_manifest_df26.csv` | manifesto Bronze DF26 |
+| `data/bronze/manifests/df26_logos_splits.csv` | folds LOGOS e avaliação comercial final |
+| `pipelines/df26/dvc.yaml` | reprodução separada do fluxo DF26 |
+| `docs/df26_benchmark.md` | instruções completas de uso |
+
+Execução resumida:
+
+```bash
+huggingface-cli login
+python -m src.data_engineering.ingestion.df26 prepare
+python -m src.data_engineering.pipeline build \
+  --skip-ingest \
+  --manifest data/bronze/manifests/bronze_manifest_df26.csv \
+  --videos-dir data/external/df26 \
+  --metadata-dir data/df26/silver/face_metadata_json \
+  --silver-dir data/df26/silver \
+  --gold-dir data/df26/gold \
+  --groups abcde \
+  --max-frames 25 \
+  --sample-fps 5 \
+  --temporal-min-points 3 \
+  --generate-missing-metadata true \
+  --face-detector-model models/face_detector.task \
+  --face-model experimentos/grupo_b/data/extracted/face_landmarker.task \
+  --segmenter-model models/image_segmenter.task \
+  --with-gx \
+  --fail-on-error
+```
+
+Para DVC:
+
+```bash
+dvc repro pipelines/df26/dvc.yaml:df26_validate_data_contracts
+```
+
+O arquivo `df26_logos_splits.csv` separa fakes open-weight para o protocolo
+leave-one-generator-family-out e mantém fakes comerciais como avaliação final
+OOD. Esses campos são metadados de governança e não devem ser usados como
+features do modelo.
+
 ## Status do projeto
 
 Projeto em evolução incremental com base funcional para extração de sinais e análise comparativa.

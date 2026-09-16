@@ -51,6 +51,10 @@ def test_build_video_level_gold_dataset_collapses_regions_to_video_rows() -> Non
             "missing_feature_ratio": [0.0, 0.0, 0.0],
             "quality_flag": ["ok", "ok", "ok"],
             "is_trainable": [True, True, True],
+            "benchmark_dataset": ["DF26", "DF26", "DF26"],
+            "df26_generator": ["Kling_3.0", "Kling_3.0", ""],
+            "df26_generator_family": ["Kling_3.0", "Kling_3.0", "real"],
+            "df26_training_role": ["commercial_evaluation_only", "commercial_evaluation_only", "real_reference"],
             "lbp_face_entropy_norm_mean": [0.4, 0.1, 0.8],
             "temporal__lbp_face_entropy_norm__d1_std": [0.05, 0.02, 0.01],
         }
@@ -61,4 +65,6 @@ def test_build_video_level_gold_dataset_collapses_regions_to_video_rows() -> Non
     assert len(gold) == 2
     assert "rosto_completo__lbp_face_entropy_norm_mean" in gold.columns
     assert "fundo__temporal__lbp_face_entropy_norm__d1_std" in gold.columns
+    assert "df26_generator" in gold.columns
+    assert "rosto_completo__df26_generator" not in gold.columns
     assert set(gold["target_label"]) == {"Fake", "Real"}

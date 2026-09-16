@@ -1,0 +1,119 @@
+vars:
+  - ../../params.yaml
+
+stages:
+  df26_download:
+    wdir: ../..
+    cmd: >-
+      python -m src.data_engineering.ingestion.df26 download
+      --repo-id ${df26.repo_id}
+      --output-dir ${df26.dataset_dir}
+    deps:
+      - src/data_engineering/ingestion/df26.py
+      - src/shared/core/paths.py
+    outs:
+      - ${df26.dataset_dir}:
+          persist: true
+
+  df26_prepare_manifest:
+    wdir: ../..
+    cmd: >-
+      python -m src.data_engineering.ingestion.df26 manifest
+      --dataset-dir ${df26.dataset_dir}
+      --output ${df26.manifest}
+      --splits-output ${df26.logos_splits}
+      --repo-id ${df26.repo_id}
+      --limit ${df26.manifest_limit}
+    deps:
+      - src/data_engineering/ingestion/df26.py
+      - src/shared/core/paths.py
+      - ${df26.dataset_dir}/metadata/videos.csv
+    outs:
+      - ${df26.manifest}
+      - ${df26.logos_splits}
+
+  df26_build_silver_metadata:
+    wdir: ../..
+    cmd: >-
+      python -m src.data_engineering.pipeline preprocess
+      --manifest ${df26.manifest}
+      --videos-dir ${df26.videos_dir}
+      --metadata-dir ${df26.metadata_dir}
+      --max-frames ${df26.max_frames}
+      --sample-fps ${df26.sample_fps}
+      --detect-every ${df26.detect_every}
+      --face-detector-model ${df26.face_detector_model}
+      --face-model ${df26.face_model}
+      --segmenter-model ${df26.segmenter_model}
+      --max-faces ${df26.max_faces}
+      --face-detection-confidence ${df26.face_detection_confidence}
+      --face-landmark-confidence ${df26.face_landmark_confidence}
+    deps:
+      - src
+      - ${df26.manifest}
+      - ${df26.dataset_dir}
+    outs:
+      - ${df26.metadata_dir}:
+          persist: true
+
+  df26_build_gold_dataset:
+    wdir: ../..
+    cmd: >-
+      python -m src.data_engineering.pipeline gold
+      --manifest ${df26.manifest}
+      --videos-dir ${df26.videos_dir}
+      --metadata-dir ${df26.metadata_dir}
+      --silver-dir ${df26.silver_dir}
+      --gold-dir ${df26.gold_dir}
+      --groups ${df26.groups}
+      --max-frames ${df26.max_frames}
+      --sample-fps ${df26.sample_fps}
+      --temporal-min-points ${df26.temporal_min_points}
+      --generate-missing-metadata ${df26.generate_missing_metadata}
+      --overwrite-metadata ${df26.overwrite_metadata}
+      --face-detector-model ${df26.face_detector_model}
+      --face-model ${df26.face_model}
+      --segmenter-model ${df26.segmenter_model}
+      --max-faces ${df26.max_faces}
+      --face-detection-confidence ${df26.face_detection_confidence}
+      --face-landmark-confidence ${df26.face_landmark_confidence}
+    deps:
+      - src
+      - ${df26.manifest}
+      - ${df26.metadata_dir}
+      - ${df26.dataset_dir}
+    outs:
+      - ${df26.silver_dir}/frame_features:
+          persist: true
+      - ${df26.silver_dir}/video_features:
+          persist: true
+      - ${df26.silver_dir}/temporal_features:
+          persist: true
+      - ${df26.gold_dir}/gold_video_region_dataset.parquet:
+          persist: true
+      - ${df26.gold_dir}/gold_training_dataset.parquet:
+          persist: true
+
+  df26_validate_data_contracts:
+    wdir: ../..
+    cmd: >-
+      python -m src.data_engineering.pipeline validate
+      --report data/reports/pipeline_latest_df26.json
+      --manifest ${df26.manifest}
+      --metadata-dir ${df26.metadata_dir}
+      --silver-dir ${df26.silver_dir}
+      --gold-dir ${df26.gold_dir}
+      --with-gx
+      --fail-on-error
+    deps:
+      - src
+      - ${df26.manifest}
+      - ${df26.metadata_dir}
+      - ${df26.silver_dir}/frame_features
+      - ${df26.silver_dir}/video_features
+      - ${df26.silver_dir}/temporal_features
+      - ${df26.gold_dir}/gold_video_region_dataset.parquet
+      - ${df26.gold_dir}/gold_training_dataset.parquet
+    metrics:
+      - data/reports/pipeline_latest_df26.json:
+          cache: false

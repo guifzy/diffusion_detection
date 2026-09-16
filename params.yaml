@@ -19,3 +19,27 @@ pipeline:
   label_column: label
   generate_missing_metadata: true
   overwrite_metadata: false
+
+df26:
+  repo_id: DF26/DF26
+  dataset_dir: data/external/df26
+  manifest: data/bronze/manifests/bronze_manifest_df26.csv
+  logos_splits: data/bronze/manifests/df26_logos_splits.csv
+  metadata_dir: data/df26/silver/face_metadata_json
+  silver_dir: data/df26/silver
+  gold_dir: data/df26/gold
+  videos_dir: data/external/df26
+  groups: abcde
+  max_frames: 25
+  sample_fps: 5.0
+  temporal_min_points: 3
+  detect_every: 1
+  face_detector_model: models/face_detector.task
+  face_model: experimentos/grupo_b/data/extracted/face_landmarker.task
+  segmenter_model: models/image_segmenter.task
+  max_faces: 10
+  face_detection_confidence: 0.3
+  face_landmark_confidence: 0.3
+  manifest_limit: 0
+  generate_missing_metadata: true
+  overwrite_metadata: false
