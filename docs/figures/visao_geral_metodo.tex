@@ -1,0 +1,158 @@
+% Figura vetorial da arquitetura metodologica.
+% O arquivo e incluído por artigo_estrutura_inicial.tex dentro de um resizebox.
+\begin{tikzpicture}[
+  font=\sffamily\scriptsize,
+  node distance=4.5mm and 5.5mm,
+  >=Latex,
+  fluxo/.style={->, line width=0.75pt, draw=black!65},
+  fluxoaux/.style={->, line width=0.65pt, draw=black!45, dashed},
+  bloco/.style={
+    draw=black!55,
+    line width=0.65pt,
+    rounded corners=2pt,
+    align=center,
+    inner sep=4.5pt,
+    minimum height=10mm
+  },
+  entrada/.style={bloco, fill=blue!8},
+  processo/.style={bloco, fill=black!3},
+  aprendido/.style={bloco, fill=orange!13, draw=orange!65!black},
+  saida/.style={bloco, fill=green!11, draw=green!55!black},
+  familia/.style={
+    bloco,
+    text width=26mm,
+    minimum height=15mm,
+    inner sep=3.5pt
+  },
+  rotulo/.style={font=\sffamily\bfseries\scriptsize, text=black!65},
+  nota/.style={
+    draw=black!38,
+    dashed,
+    rounded corners=2pt,
+    fill=black!1,
+    align=left,
+    inner sep=4.5pt
+  }
+]
+
+% Entrada e decomposicao do video.
+\node[entrada, text width=25mm] (video) {\textbf{Vídeo de entrada}\\$V=\{I_1,\ldots,I_T\}$};
+\node[processo, text width=37mm, right=of video] (amostragem) {
+  \textbf{Amostragem em tempo físico}\\
+  timestamps, padronização e controle de qualidade
+};
+\node[processo, text width=44mm, right=of amostragem] (regioes) {
+  \textbf{Regiões semânticas}\\
+  rosto, olhos, boca, corpo e fundo\\
+  \textcolor{black!62}{track, confiança, origem e fallback}
+};
+
+\draw[fluxo] (video) -- (amostragem);
+\draw[fluxo] (amostragem) -- (regioes);
+
+% Banco de descritores determinísticos.
+\node[familia, fill=blue!9, below=12mm of video, xshift=-2mm] (ga) {
+  \textbf{A · Textura e bordas}\\
+  LBP, Sobel e Laplaciano
+};
+\node[familia, fill=cyan!10, right=3.2mm of ga] (gb) {
+  \textbf{B · Estrutura local}\\
+  SIFT e similaridade de patches
+};
+\node[familia, fill=violet!9, right=3.2mm of gb] (gc) {
+  \textbf{C · Resíduo}\\
+  alta passagem bilateral
+};
+\node[familia, fill=orange!11, right=3.2mm of gc] (gd) {
+  \textbf{D · Frequência}\\
+  potência e geometria espectral
+};
+\node[familia, fill=green!10, right=3.2mm of gd] (ge) {
+  \textbf{E · Fotometria}\\
+  luminância, cor e iluminação
+};
+
+\coordinate (familias-top) at ($(gc.north)+(0,4.5mm)$);
+\draw[fluxo] (regioes.south) |- (familias-top);
+\draw[line width=0.75pt, draw=black!65] (ga.north |- familias-top) -- (ge.north |- familias-top);
+\foreach \n in {ga,gb,gc,gd,ge}{
+  \draw[fluxo] (\n.north |- familias-top) -- (\n.north);
+}
+
+\node[processo, text width=44mm, below=11mm of gb, xshift=-5mm] (sinais) {
+  \textbf{Sinais regionais por quadro}\\
+  $x_{V,t,r,k}=\phi_k(I_{V,t},r)$\\
+  \textcolor{black!62}{inclui contrastes entre regiões}
+};
+\node[processo, text width=54mm, right=7mm of sinais] (agregacao) {
+  \textbf{Agregação estática e temporal}\\
+  média, desvio e mediana; $\Delta x$, $\Delta^2x$,\\
+  autocorrelação e espectro temporal
+};
+\node[entrada, text width=24mm, right=7mm of agregacao] (vetor) {
+  \textbf{Vetor por vídeo}\\
+  $z_V=\Psi(\Phi(I_{1:T}))$
+};
+
+\coordinate (familias-bottom) at ($(gc.south)+(0,-4.5mm)$);
+\draw[line width=0.75pt, draw=black!65] (ga.south |- familias-bottom) -- (ge.south |- familias-bottom);
+\foreach \n in {ga,gb,gc,gd,ge}{
+  \draw[fluxo] (\n.south) -- (\n.south |- familias-bottom);
+}
+\draw[fluxo] (familias-bottom) -| (sinais.north);
+\draw[fluxo] (sinais) -- (agregacao);
+\draw[fluxo] (agregacao) -- (vetor);
+
+% Etapa aprendida. O fluxo retorna da direita para a esquerda para evitar
+% cruzamentos entre as duas faixas da figura.
+\node[aprendido, text width=39mm, below=13mm of vetor] (ajuste) {
+  \textbf{Ajuste dentro de cada fold}\\
+  imputação, escala, seleção e calibração
+};
+\node[aprendido, text width=43mm, left=7mm of ajuste] (classificador) {
+  \textbf{Classificador tabular $g_\theta$}\\
+  regressão logística, Random Forest\\
+  ou gradient boosting
+};
+\node[saida, text width=28mm, left=7mm of classificador] (predicao) {
+  \textbf{Predição}\\
+  $\widehat p(y=\mathrm{fake}\mid V)$
+};
+
+\draw[fluxo] (vetor) -- (ajuste);
+\draw[fluxo] (ajuste) -- (classificador);
+\draw[fluxo] (classificador) -- (predicao);
+
+% Protocolo e auditoria: influencia a avaliacao, mas nao e entrada forense.
+\node[nota, text width=137mm, below=11mm of classificador] (protocolo) {
+  \textbf{Protocolo de avaliação e auditoria (fora de $z_V$):}
+  separação por conteúdo + gerador não visto (LOGOS); baseline de metadados;
+  ablações por família, região e temporalidade; controles de movimento, FPS,
+  resolução, codec e compressão; holdout comercial após congelamento.
+};
+
+\draw[fluxoaux] (protocolo.north -| ajuste.south) -- (ajuste.south);
+\draw[fluxoaux] (protocolo.north -| predicao.south) -- (predicao.south);
+
+% Contornos que explicitam o que e fixo e o que e aprendido.
+\node[
+  draw=blue!55!black,
+  line width=0.75pt,
+  dashed,
+  rounded corners=3pt,
+  fit=(amostragem)(regioes)(ga)(ge)(sinais)(agregacao)(vetor),
+  inner sep=4.5mm,
+  label={[rotulo, text=blue!55!black]above left:extração determinística e auditável}
+] (deterministico) {};
+
+\node[
+  draw=orange!70!black,
+  line width=0.75pt,
+  dashed,
+  rounded corners=3pt,
+  fit=(ajuste)(classificador)(predicao),
+  inner sep=4.5mm,
+  label={[rotulo, text=orange!70!black]above left:etapa supervisionada}
+] (supervisionado) {};
+
+\end{tikzpicture}

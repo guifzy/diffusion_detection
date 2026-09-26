@@ -16,6 +16,8 @@
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,fit,positioning}
 \usepackage{hyperref}
 \usepackage{url}
 
@@ -368,6 +370,25 @@ hipótese for refutada, manter e relatar a refutação; não reescrever a hipót
 para coincidir com os resultados.}
 
 \section{Materiais e métodos}
+
+A Figura~\ref{fig:visao-geral-metodo} sintetiza o método proposto e explicita
+a separação entre a representação forense, composta por operações
+determinísticas, e a etapa supervisionada. Variáveis de aquisição e governança
+não compõem $z_V$; elas são mantidas para auditoria e para o baseline de
+atalhos. Essa separação permite atribuir eventuais ganhos às famílias de sinais
+e verificar se o desempenho persiste sob mudança de gerador e de conteúdo.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figures/visao_geral_metodo.tex}}
+  \caption{Visão geral do método. Cada vídeo é amostrado em tempo físico e
+  decomposto em regiões semânticas. Cinco famílias de descritores produzem
+  sinais por quadro e região, posteriormente resumidos por estatísticas
+  estáticas e temporais em um vetor por vídeo $z_V$. Apenas a etapa final é
+  aprendida. O protocolo de avaliação e as variáveis de auditoria não são
+  fornecidos ao detector forense.}
+  \label{fig:visao-geral-metodo}
+\end{figure}
 
 \subsection{Estado atual do repositório}
 
