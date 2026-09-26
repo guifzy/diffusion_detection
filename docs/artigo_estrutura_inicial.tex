@@ -1,0 +1,718 @@
+% Estrutura inicial do artigo do projeto diffusion_detection.
+% Compilacao recomendada: pdflatex artigo_estrutura_inicial.tex (duas vezes).
+% Antes da submissao, adaptar o arquivo ao template oficial do evento ou periodico.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{url}
+
+\geometry{margin=2.5cm}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!45!black,
+  citecolor=green!35!black,
+  urlcolor=blue!55!black
+}
+\setlist{itemsep=0.25em, topsep=0.4em}
+\renewcommand{\arraystretch}{1.2}
+
+% Marcadores de trabalho para a equipe. Remover antes da submissao.
+\newcommand{\afazer}[1]{%
+  \par\smallskip
+  \noindent\textcolor{red!70!black}{\textbf{A fazer pela equipe:} #1}
+  \par\smallskip
+}
+\newcommand{\decidir}[1]{%
+  \par\smallskip
+  \noindent\textcolor{orange!70!black}{\textbf{Decisão pendente:} #1}
+  \par\smallskip
+}
+\newcommand{\naoinventar}{%
+  \par\smallskip
+  \noindent\fbox{%
+    \parbox{0.94\linewidth}{%
+      \textbf{Nota de integridade científica:} não inserir métricas, resultados,
+      comparações ou conclusões que ainda não tenham sido obtidos por uma
+      execução versionada e auditável do experimento.}}
+  \par\smallskip
+}
+
+\title{%
+  Sinais Forenses Interpretáveis para Detecção de Vídeos Gerados por
+  Inteligência Artificial sob Mudança de Gerador\\[0.4em]
+  \large Estrutura inicial do manuscrito e plano de trabalho
+}
+
+\author{%
+  Nome do(a) orientador(a)\\
+  \texttt{email@instituicao.br}
+  \and
+  Nome dos(as) discentes\\
+  Instituição
+}
+
+\date{Versão de trabalho --- setembro de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Os avanços recentes em modelos de geração de vídeo tornaram a distinção entre
+conteúdo real e sintético progressivamente mais difícil, especialmente quando
+o detector é avaliado em geradores não observados durante o treinamento. Este
+trabalho investiga uma representação forense explícita e auditável, composta
+por sinais de textura, bordas, estrutura local, resíduo, frequência,
+fotometria e comportamento temporal, extraídos de regiões como rosto, olhos,
+boca, corpo e fundo. A hipótese central é que a combinação de pistas de baixo
+nível pode capturar inconsistências compartilhadas por diferentes geradores,
+desde que a avaliação controle atalhos relacionados a conteúdo, identidade,
+movimento, taxa de quadros, resolução e compressão. O estudo será conduzido
+principalmente no benchmark DF26, usando partições agrupadas por conteúdo e um
+protocolo de gerador não visto. \textbf{[Inserir aqui, somente após os
+experimentos, os resultados principais com métricas e intervalos de
+confiança.]}
+
+\smallskip
+\noindent\textbf{Palavras-chave:} vídeo sintético; detecção de conteúdo gerado
+por IA; forense multimídia; sinais interpretáveis; generalização; mudança de
+domínio.
+\end{abstract}
+
+\naoinventar
+
+\section{Introdução}
+
+Modelos contemporâneos de texto-para-vídeo e imagem-para-vídeo produzem cenas
+com alto grau de realismo visual e temporal. Esse avanço reduz a utilidade de
+detectores desenvolvidos apenas para manipulações faciais tradicionais, como
+troca de rosto e reenactment. O problema torna-se particularmente relevante em
+vídeos de pronunciamentos, entrevistas e comunicação pública, nos quais a
+autenticidade do conteúdo pode influenciar decisões sociais e políticas.
+
+Um obstáculo central é a generalização. Um detector pode apresentar desempenho
+elevado quando os dados de treino e teste compartilham geradores, fontes,
+codecs ou padrões de movimento, mas falhar diante de um novo processo
+generativo. O benchmark DF26 evidencia essa dificuldade ao reunir vídeos de
+fala produzidos por geradores recentes e ao reportar desempenho próximo ao
+acaso para seres humanos e diferentes detectores existentes
+\cite{shykula2026df26}. Estudos recentes também mostram que parte do desempenho
+de detectores temporais pode decorrer de vieses de amostragem, movimento,
+resolução ou pré-processamento, e não necessariamente de propriedades
+intrínsecas da geração sintética \cite{michels2026biases}.
+
+Este trabalho parte de uma direção complementar aos modelos profundos de ponta
+a ponta. Em vez de aprender toda a representação diretamente dos pixels, o
+pipeline calcula descritores determinísticos e semanticamente nomeados. Esses
+descritores são agregados por vídeo e fornecidos a classificadores tabulares.
+Essa separação permite analisar quais famílias de sinais e quais regiões
+contribuem para a decisão, além de facilitar testes de robustez e a identificação
+de atalhos.
+
+A pergunta central do artigo é: \emph{até que ponto sinais forenses explícitos,
+regionais e temporais discriminam vídeos reais e sintéticos quando o gerador de
+teste não aparece no treinamento e os principais fatores de confusão são
+controlados?}
+
+As contribuições pretendidas são:
+
+\begin{enumerate}
+  \item uma representação tabular forense organizada por família de sinal,
+        região semântica e comportamento temporal;
+  \item um protocolo de avaliação que combine mudança de gerador e separação
+        de conteúdo relacionado;
+  \item uma análise de ablação por família, região e temporalidade;
+  \item uma auditoria de atalhos associados a metadados, movimento,
+        amostragem, resolução, codec e compressão.
+\end{enumerate}
+
+\afazer{Reescrever o último parágrafo das contribuições após os experimentos.
+Cada contribuição declarada deverá apontar para uma tabela, figura, artefato de
+código ou resultado verificável.}
+
+\section{Fundamentação teórica}
+
+\subsection{Detecção de vídeos totalmente gerados}
+
+A literatura de deepfakes foi inicialmente dominada por manipulações locais do
+rosto. Vídeos totalmente gerados constituem um regime diferente: aparência,
+fundo, iluminação e movimento podem ser sintetizados conjuntamente. Por isso,
+artefatos de recorte ou mistura de face, comuns em bases anteriores, não são
+necessariamente informativos nesse novo cenário.
+
+Abordagens recentes utilizam redes espaço-temporais, representações aprendidas,
+modelos de estado e detectores baseados em frequência. O DeMamba, por exemplo,
+explora inconsistências espaciais e temporais em um benchmark de grande escala
+\cite{chen2024demamba}. O UNITE procura cobrir tanto manipulações parciais
+quanto vídeos totalmente sintéticos \cite{kundu2025unite}. Já estratégias de
+orientação forense procuram conduzir o modelo a pistas de baixo nível que
+sejam compartilhadas por arquiteturas generativas distintas
+\cite{corvi2025seeing}.
+
+Esses resultados não eliminam o problema de mudança de domínio. Geradores
+novos, recompressão de plataformas e diferenças entre as fontes reais e
+sintéticas podem alterar as distribuições observadas. Consequentemente, o
+desempenho dentro de uma mesma base não é evidência suficiente de uma propriedade
+universal dos vídeos gerados.
+
+\afazer{Construir uma tabela de trabalhos relacionados contendo: método,
+representação, datasets, tipo de split, geradores não vistos, controles de
+compressão/movimento, métricas, disponibilidade de código e limitações. Consultar
+os artigos completos, não apenas resumos ou páginas secundárias.}
+
+\subsection{Forense interpretável e sinais de baixo nível}
+
+Uma representação interpretável não significa que cada atributo possua poder
+causal ou seja isoladamente suficiente para detectar conteúdo sintético.
+Significa que a grandeza calculada tem definição conhecida, unidade de análise
+explícita e limites de interpretação documentados. Neste projeto, os sinais são
+organizados em cinco grupos.
+
+\subsubsection{Grupo A: textura, bordas e nitidez}
+
+O Local Binary Pattern (LBP) descreve a relação entre um pixel e sua vizinhança
+e é uma referência clássica para caracterização de textura
+\cite{ojala2002lbp}. Para uma vizinhança de $P$ pontos e raio $R$, uma forma
+geral do código é
+
+\begin{equation}
+  \operatorname{LBP}_{P,R}
+  = \sum_{p=0}^{P-1} s(g_p-g_c)2^p,
+  \qquad
+  s(x)=
+  \begin{cases}
+    1, & x\geq 0,\\
+    0, & x<0.
+  \end{cases}
+\end{equation}
+
+O pipeline utiliza escalas distintas e resume propriedades das distribuições
+dos códigos, como entropia normalizada, uniformidade e ocupação dos bins. Como
+os códigos LBP são categorias, momentos numéricos arbitrários dos próprios
+códigos não devem receber interpretação física.
+
+Gradientes de Sobel representam intensidade e orientação de transições locais.
+O Laplaciano responde à segunda derivada espacial e fornece indicadores de
+bordas finas e nitidez. Essas grandezas também são sensíveis a blur,
+sharpening, resize e compressão; portanto, diferenças entre classes precisam
+ser reavaliadas sob perturbações controladas.
+
+\subsubsection{Grupo B: estrutura local}
+
+O SIFT detecta pontos de interesse e descreve padrões locais com relativa
+robustez a escala e rotação \cite{lowe2004sift}. O projeto resume quantidade,
+densidade, cobertura espacial, resposta, escala, orientação e autossimilaridade
+dos descritores em cada região. Esses valores podem refletir estrutura local,
+mas também conteúdo, pose, dimensão da região e qualidade de imagem.
+
+A similaridade entre patches complementa o SIFT ao medir repetição de padrões
+locais. A amostragem deve ser determinística e espacialmente distribuída, e as
+contagens de patches válidos devem ser tratadas como controle de qualidade.
+
+\subsubsection{Grupo C: resíduo de alta passagem}
+
+O resíduo bilateral é definido por
+
+\begin{equation}
+  R = I - \operatorname{Bilateral}(I),
+\end{equation}
+
+em que o filtro bilateral suaviza variações preservando parte das bordas
+\cite{tomasi1998bilateral}. Estatísticas de $R$ descrevem magnitude, dispersão,
+caudas, autocorrelação espacial e correlação entre canais.
+
+Esse resíduo contém uma mistura de textura, bordas, ruído, sharpening e
+compressão. Ele deve ser apresentado como um \emph{baseline} de alta passagem,
+e não como estimativa de PRNU, Noiseprint ou ruído de sensor.
+
+\subsubsection{Grupo D: frequência espacial}
+
+Para uma região em tons de cinza, o pipeline centraliza o sinal, aplica uma
+janela de Hann e calcula a transformada discreta de Fourier:
+
+\begin{equation}
+  \widetilde{I}(x,y)=(I(x,y)-\overline{I})w(x,y),
+  \qquad
+  F(u,v)=\mathcal{F}_{2}\{\widetilde{I}\},
+  \qquad
+  P(u,v)=|F(u,v)|^2.
+\end{equation}
+
+Razões de potência por banda, centroide radial, entropia, planicidade,
+anisotropia e inclinação espectral resumem a distribuição de energia. Pistas
+frequenciais podem revelar artefatos de arquiteturas generativas, mas também
+são fortemente afetadas por codec, taxa de compressão e interpolação. Trabalhos
+recentes mostram tanto o potencial das pistas de frequência quanto a necessidade
+de testá-las após recompressão \cite{corvi2025seeing,michels2026biases}.
+
+\subsubsection{Grupo E: fotometria regional}
+
+As métricas fotométricas resumem luminância, cromaticidade, saturação,
+iluminação suavizada, gradientes e proporções de pixels escuros, claros ou
+clipados. Assimetrias horizontais e verticais permitem descrever desequilíbrios
+entre partes de uma região.
+
+O módulo de candidatos de sombra usa uma aproximação inspirada em Retinex para
+identificar pixels abaixo de uma estimativa local de iluminação. Esses valores
+são \emph{proxies} fotométricos: não estimam completamente fonte de luz,
+normais, reflectância ou geometria tridimensional. Materiais escuros e exposição
+local podem gerar respostas semelhantes.
+
+\subsection{Regiões semânticas e contrastes regionais}
+
+Os descritores são extraídos de rosto completo, olhos, boca, corpo e fundo. A
+hipótese é que uma inconsistência possa ser localizada ou aparecer como
+contraste entre regiões. Entretanto, regiões incorretas, faces pequenas,
+oclusões e fallbacks geométricos podem produzir separação artificial.
+
+Cada observação deve preservar vídeo, frame, tempo, identidade rastreada,
+região, origem da detecção e indicadores de qualidade. O MediaPipe fornece a
+base operacional para detecção e segmentação \cite{lugaresi2019mediapipe}, mas
+a validade científica das regiões depende de auditoria visual e quantitativa.
+
+\subsection{Temporalidade}
+
+Se $x(t)$ representa um sinal regional amostrado no tempo físico, as primeiras
+e segundas diferenças podem ser aproximadas por
+
+\begin{equation}
+  \Delta x_i = \frac{x(t_{i+1})-x(t_i)}{t_{i+1}-t_i},
+  \qquad
+  \Delta^2 x_i =
+  \frac{\Delta x_{i+1}-\Delta x_i}{\widetilde{t}_{i+1}-\widetilde{t}_i}.
+\end{equation}
+
+O pipeline também calcula dispersão robusta, autocorrelação e estatísticas de
+frequência temporal. Usar timestamps é fundamental porque índices de frames
+podem representar intervalos físicos diferentes. Ainda assim, menor ou maior
+variação temporal pode ser apenas consequência de movimento, duração ou FPS.
+Por isso, a contribuição temporal deverá ser avaliada antes e depois do
+balanceamento desses fatores.
+
+\subsection{Generalização, atalhos e vazamento experimental}
+
+Atalhos são variáveis que permitem prever o rótulo dentro de uma base sem
+representar a propriedade científica de interesse. Exemplos incluem resolução,
+codec, FPS, duração, origem, quantidade de movimento, padding e política de
+amostragem. Detectores temporais recentes mostraram quedas substanciais quando
+vieses de movimento e pré-processamento foram controlados
+\cite{michels2026biases}.
+
+Outro risco é o vazamento de conteúdo. Se versões reais e sintéticas derivadas
+do mesmo clipe, prompt ou identidade aparecem em treino e teste, o modelo pode
+reconhecer o conteúdo em vez do processo de geração. Por isso, o artigo propõe
+separar simultaneamente famílias de geradores e grupos de conteúdo.
+
+\subsection{Classificadores tabulares e interpretação}
+
+Após a extração, cada vídeo é representado por um vetor $z_V$, e um
+classificador estima
+
+\begin{equation}
+  \widehat{y}=g_{\theta}(z_V).
+\end{equation}
+
+Regressão logística regularizada, Random Forest e gradient boosting representam
+baselines com diferentes relações entre complexidade e interpretação
+\cite{breiman2001rf,chen2016xgboost}. Imputação, normalização, seleção de
+atributos e calibração devem ser ajustadas exclusivamente nos dados de treino
+de cada fold. Coeficientes padronizados e importância por permutação agrupada
+podem apoiar a análise, mas não demonstram causalidade.
+
+\section{Perguntas de pesquisa e hipóteses}
+
+\begin{description}[style=nextline]
+  \item[RQ1] Sinais forenses explícitos discriminam vídeos reais e sintéticos
+  quando o gerador de teste não aparece no treinamento?
+
+  \item[RQ2] Quais famílias de sinais permanecem estáveis entre geradores?
+
+  \item[RQ3] Quais regiões oferecem evidência complementar e quais capturam
+  predominantemente conteúdo ou erro de segmentação?
+
+  \item[RQ4] Os derivados temporais acrescentam informação após controlar FPS,
+  duração e movimento?
+
+  \item[RQ5] O desempenho persiste sob compressão, resize, mudanças de FPS e
+  separação de conteúdo relacionado?
+\end{description}
+
+As hipóteses iniciais são:
+
+\begin{enumerate}[label=H\arabic*.]
+  \item A representação forense supera um baseline baseado apenas em metadados
+        nos testes com gerador não visto.
+  \item Sinais espectrais e residuais apresentam maior transferência entre
+        geradores, mas são sensíveis a recompressão e resize.
+  \item A temporalidade oferece ganho incremental apenas quando amostragem e
+        movimento são controlados.
+  \item Contrastes regionais acrescentam informação sem depender
+        predominantemente de fallback ou falha do detector de regiões.
+\end{enumerate}
+
+\afazer{Congelar perguntas e hipóteses antes da análise confirmatória. Se uma
+hipótese for refutada, manter e relatar a refutação; não reescrever a hipótese
+para coincidir com os resultados.}
+
+\section{Materiais e métodos}
+
+\subsection{Estado atual do repositório}
+
+O repositório implementa ingestão, pré-processamento regional, extração dos
+grupos A--E, agregações temporais, camadas Bronze/Silver/Gold, contratos de
+dados e versionamento por DVC. No momento de preparação desta estrutura, não
+estavam disponíveis localmente a base DF26 processada, a Gold experimental, um
+módulo completo de treinamento em \texttt{src/ml} ou resultados persistidos.
+Os notebooks também não continham saídas executadas.
+
+Portanto, as seções de resultados e conclusão deste documento são apenas uma
+estrutura de preenchimento. O artefato registrado no \texttt{dvc.lock}
+corresponde a validação operacional e não deve ser tratado como amostra
+científica.
+
+\subsection{Dados}
+
+O DF26 será a base principal. O benchmark contém 271 vídeos reais e 2.420
+vídeos sintéticos de sete famílias de geradores em cenários de fala com uma
+pessoa \cite{shykula2026df26}. A licença e os papéis experimentais definidos
+pela base devem ser respeitados, mantendo geradores comerciais apenas para
+avaliação final.
+
+O catálogo adicional do projeto contém 2.039 links, dos quais 1.072 estão
+rotulados como reais e 967 como falsos. Essa coleção somente poderá ser usada
+como validação externa após auditoria de disponibilidade, licença, proveniência,
+rótulos, duplicatas e vídeos derivados.
+
+\afazer{Produzir a tabela final de composição da amostra após todos os filtros,
+com contagens por classe, gerador, cenário, modo de geração, resolução, FPS,
+codec e motivo de exclusão.}
+
+\subsection{Pré-processamento e regiões}
+
+Os vídeos são amostrados em tempo físico. O pipeline atual prevê 5 fps e até 25
+frames no DF26, preservando FPS, duração, contagem de frames e resolução
+originais para auditoria. MediaPipe é usado para produzir regiões de rosto,
+olhos, boca, corpo e fundo, com registro de confiança, origem da região e
+fallback.
+
+\afazer{Validar a política de amostragem, auditar visualmente uma amostra
+estratificada e definir critérios objetivos para face pequena, oclusão, pose,
+blur, troca de identidade e fallback.}
+
+\subsection{Extração e agregação dos sinais}
+
+Para o vídeo $V$, frame $t$, região $r$ e descritor $k$, define-se
+
+\begin{equation}
+  x_{V,t,r,k}=\phi_k(I_{V,t},r).
+\end{equation}
+
+As observações são agregadas por vídeo, região e track, gerando estatísticas
+estáticas e temporais:
+
+\begin{equation}
+  z_V=\Psi\bigl(\Phi(I_1),\Phi(I_2),\ldots,\Phi(I_T)\bigr).
+\end{equation}
+
+Colunas de governança, caminhos, nomes de arquivo, fonte e identidade do
+gerador não podem entrar como atributos preditivos. Variáveis de aquisição
+serão reservadas para auditoria e para um baseline de atalhos.
+
+\subsection{Protocolo de avaliação}
+
+O protocolo LOGOS atualmente implementado precisa ser corrigido: os folds
+existentes colocam todos os vídeos reais em treino e somente falsos do gerador
+omitido em teste. Isso não permite calcular uma métrica binária real-versus-falso
+válida no conjunto de teste.
+
+O protocolo proposto terá dois eixos:
+
+\begin{enumerate}
+  \item \textbf{mudança de gerador:} uma família open-weight é omitida do
+        treinamento;
+  \item \textbf{mudança de conteúdo:} \texttt{df26\_clip\_id} e demais chaves
+        de identidade/conteúdo são divididas em grupos disjuntos.
+\end{enumerate}
+
+Cada teste deverá conter vídeos reais e falsos. Treino, validação e teste não
+podem compartilhar clipes relacionados. O conjunto comercial será aberto uma
+única vez, depois que representação, modelos, hiperparâmetros e limiares forem
+congelados.
+
+\afazer{Implementar o novo gerador de splits, adicionar testes automatizados de
+ausência de sobreposição e salvar a tabela de grupos usada em cada repetição.}
+
+\subsection{Baselines e ablações}
+
+Os experimentos mínimos serão:
+
+\begin{table}[ht]
+  \centering
+  \caption{Experimentos mínimos planejados.}
+  \label{tab:experimentos}
+  \begin{tabular}{p{0.28\linewidth}p{0.62\linewidth}}
+    \toprule
+    Experimento & Finalidade \\
+    \midrule
+    Aleatório e majoritário & Referências inferiores de desempenho. \\
+    Metadados somente & Quantificar atalhos de aquisição. \\
+    Regressão logística & Baseline linear regularizado. \\
+    Random Forest/boosting & Baselines tabulares não lineares. \\
+    Grupos A--E isolados & Medir contribuição de cada família. \\
+    Estático vs. temporal & Medir ganho temporal incremental. \\
+    Regiões isoladas & Localizar a fonte da evidência. \\
+    Sem fallback & Testar dependência de falhas regionais. \\
+    Perturbações & Medir robustez a compressão, resize, FPS, blur e ruído. \\
+    Holdout comercial & Avaliação final com pipeline congelado. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Métricas e análise estatística}
+
+Serão reportadas AUROC, macro-AUROC entre geradores, balanced accuracy, AUPRC
+com prevalência, TPR em FPR fixo, Brier score e erro esperado de calibração.
+Também serão medidos tempo de extração, memória e dimensionalidade.
+
+Intervalos de confiança serão estimados por bootstrap agrupado em
+\texttt{df26\_clip\_id}. Comparações de modelos usarão as mesmas unidades de
+teste. Análises univariadas deverão corrigir múltiplas comparações. O vídeo é a
+unidade mínima de avaliação; frames do mesmo vídeo não serão tratados como
+amostras independentes.
+
+\afazer{Definir previamente número de repetições, sementes, FPR operacional,
+método de correção de múltiplos testes e regra de seleção do modelo final.}
+
+\section{Plano de trabalho até o artigo}
+
+\begin{table}[ht]
+  \centering
+  \small
+  \caption{Pacotes de trabalho e evidências de conclusão.}
+  \label{tab:plano}
+  \begin{tabular}{p{0.05\linewidth}p{0.21\linewidth}p{0.45\linewidth}p{0.17\linewidth}}
+    \toprule
+    ID & Frente & Entrega verificável & Responsável \\
+    \midrule
+    P1 & Protocolo & Splits agrupados, testes de vazamento e plano estatístico congelado. & [nome] \\
+    P2 & Ambiente & Dependências fixadas; testes e pipeline reproduzidos em ambiente limpo. & [nome] \\
+    P3 & Dados & DF26 obtido sob licença; manifestos, hashes e exclusões registrados. & [nome] \\
+    P4 & Regiões & Auditoria visual estratificada e relatório de cobertura/fallback. & [nome] \\
+    P5 & EDA & Relatório de qualidade, confundidores, correlação e estabilidade. & [nome] \\
+    P6 & Modelagem & Baselines, seleção interna aos folds e calibração implementados. & [nome] \\
+    P7 & Ablacões & Resultados por família, região, temporalidade e gerador. & [nome] \\
+    P8 & Robustez & Compressão, resize, FPS, movimento e controles negativos. & [nome] \\
+    P9 & Comparação & Pelo menos um método externo sob protocolo compatível. & [nome] \\
+    P10 & Redação & Figuras, tabelas, discussão, limitações e pacote reproduzível. & [nome] \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Ordem recomendada}
+
+\begin{enumerate}
+  \item corrigir o protocolo antes de consultar resultados confirmatórios;
+  \item estabilizar o ambiente e executar os testes;
+  \item processar um piloto estratificado e auditar as regiões;
+  \item executar EDA de qualidade e corrigir problemas de medição;
+  \item processar a base completa e treinar os baselines;
+  \item executar ablações e controles de robustez;
+  \item congelar o pipeline e avaliar o holdout comercial;
+  \item preencher resultados, discussão, limitações e conclusão.
+\end{enumerate}
+
+\subsection{Critérios mínimos para submissão}
+
+O manuscrito somente deverá ser submetido quando:
+
+\begin{itemize}
+  \item cada conjunto de teste contiver ambas as classes;
+  \item não houver sobreposição indevida de conteúdo, identidade ou derivados;
+  \item a cobertura e as falhas das regiões estiverem documentadas;
+  \item os experimentos forem reproduzíveis em ambiente limpo;
+  \item o ganho sobre baselines simples e metadados persistir em geradores não
+        vistos, ou a ausência desse ganho estiver rigorosamente demonstrada;
+  \item os principais confundidores tiverem sido controlados;
+  \item o holdout comercial tiver sido usado apenas depois do congelamento;
+  \item médias vierem acompanhadas de resultados por gerador e intervalos de
+        confiança.
+\end{itemize}
+
+\section{Resultados}
+
+\naoinventar
+
+\subsection{Qualidade dos dados e das regiões}
+
+\afazer{Inserir contagens, exclusões, cobertura regional, confiança, fallback,
+tracks e falhas. Apresentar esses resultados antes das métricas preditivas.}
+
+\subsection{Generalização para geradores não vistos}
+
+\afazer{Inserir a tabela principal por fold e gerador, com intervalos de
+confiança. Incluir o baseline de metadados na mesma comparação.}
+
+\subsection{Ablacão de famílias e regiões}
+
+\afazer{Relatar grupos A--E, regiões e contrastes. Discutir estabilidade entre
+geradores, e não apenas o melhor valor médio.}
+
+\subsection{Contribuição da temporalidade}
+
+\afazer{Comparar modelos estáticos e temporais antes e depois de controlar FPS,
+duração e movimento.}
+
+\subsection{Robustez e avaliação comercial}
+
+\afazer{Relatar degradação sob perturbações e, por último, o holdout comercial.
+Registrar qualquer análise realizada após a abertura desse holdout.}
+
+\section{Discussão}
+
+A discussão deverá responder, com base nos resultados:
+
+\begin{itemize}
+  \item quais sinais permanecem úteis entre geradores;
+  \item quais diferenças desaparecem quando confundidores são controlados;
+  \item se regiões semânticas oferecem evidência complementar;
+  \item se a temporalidade mede artefato generativo ou viés de movimento;
+  \item qual é a relação entre desempenho, custo e auditabilidade;
+  \item quais conclusões não podem ser generalizadas além do DF26.
+\end{itemize}
+
+Um resultado próximo ao acaso após controles não invalida automaticamente o
+trabalho. Ele pode sustentar uma contribuição de auditoria ou resultado
+negativo, desde que o protocolo seja sólido e a causa da queda seja analisada.
+
+\afazer{Confrontar cada hipótese com os resultados e com trabalhos primários.
+Separar evidência observada, interpretação plausível e especulação.}
+
+\section{Limitações, ética e reprodutibilidade}
+
+O DF26 é concentrado em vídeos curtos de uma pessoa falando, o que limita a
+validade externa. O desempenho pode mudar em cenas longas, múltiplas pessoas,
+câmeras móveis ou outros gêneros audiovisuais. Regiões incorretas, rótulos
+imprecisos e versões futuras dos geradores constituem ameaças adicionais.
+
+Detectores de conteúdo sintético têm implicações de uso dual. Uma previsão não
+deve ser comunicada como prova definitiva de falsidade, especialmente em
+contextos de alto impacto. O artigo deverá descrever incerteza, limitações e
+condições de falha.
+
+Para reprodutibilidade, serão publicados, dentro das restrições de licença,
+código, parâmetros, versões, seeds, splits, hashes, critérios de exclusão e
+resultados agregados. Os vídeos do DF26 não deverão ser redistribuídos fora dos
+termos autorizados.
+
+\section{Conclusão}
+
+Este manuscrito propõe avaliar sinais forenses explícitos para detecção de
+vídeos gerados por IA sob mudança de gerador e separação de conteúdo. A
+estrutura atual do repositório permite conduzir essa investigação, mas ainda é
+necessário corrigir o protocolo, processar a base experimental, auditar as
+regiões, implementar a modelagem e executar ablações e testes de robustez.
+
+\textbf{[Substituir este parágrafo após os experimentos por uma resposta direta
+às perguntas de pesquisa, delimitada aos dados e controles efetivamente
+avaliados.]}
+
+\appendix
+
+\section{Checklist da equipe antes de remover os marcadores}
+
+\begin{itemize}
+  \item[$\square$] Todas as referências foram conferidas nas fontes primárias.
+  \item[$\square$] Toda afirmação quantitativa aponta para um artefato versionado.
+  \item[$\square$] Nenhuma coluna de governança entrou como feature.
+  \item[$\square$] Imputação, escala e seleção foram ajustadas dentro dos folds.
+  \item[$\square$] O teste contém reais e falsos sem vazamento de conteúdo.
+  \item[$\square$] Há resultados por gerador e intervalos de confiança.
+  \item[$\square$] O baseline de metadados foi executado.
+  \item[$\square$] As falhas de região e fallback foram auditadas.
+  \item[$\square$] O holdout comercial foi aberto somente após o congelamento.
+  \item[$\square$] Todas as ocorrências de ``A fazer'' foram resolvidas.
+  \item[$\square$] O texto foi migrado para o template do evento ou periódico.
+\end{itemize}
+
+\begin{thebibliography}{99}
+
+\bibitem{shykula2026df26}
+S.~Shykula, A.~Yermakov, I.~Samarskyi, D.~Mishkin, J.~Cech e A.~Mishchuk.
+\newblock DF26: We Cannot Tell Fake From Real Anymore.
+\newblock \emph{arXiv preprint arXiv:2609.07369}, 2026.
+
+\bibitem{michels2026biases}
+J.~Michels, L.~Jorissen e N.~Michiels.
+\newblock Dataset Biases and Shortcut Learning in Motion-Based AI-Generated
+Video Detection.
+\newblock \emph{arXiv preprint arXiv:2607.00948}, 2026.
+
+\bibitem{corvi2025seeing}
+R.~Corvi, D.~Cozzolino, E.~Prashnani, S.~De Mello, K.~Nagano e L.~Verdoliva.
+\newblock Seeing What Matters: Generalizable AI-generated Video Detection with
+Forensic-Oriented Augmentation.
+\newblock \emph{arXiv preprint arXiv:2506.16802}, 2025.
+
+\bibitem{chen2024demamba}
+H.~Chen et al.
+\newblock DeMamba: AI-Generated Video Detection on Million-Scale GenVideo
+Benchmark.
+\newblock \emph{arXiv preprint arXiv:2405.19707}, 2024.
+
+\bibitem{kundu2025unite}
+S.~Kundu et al.
+\newblock Towards a Universal Synthetic Video Detector: From Face or
+Background Manipulations to Fully AI-Generated Content.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition}, 2025.
+
+\bibitem{ojala2002lbp}
+T.~Ojala, M.~Pietikäinen e T.~Mäenpää.
+\newblock Multiresolution Gray-Scale and Rotation Invariant Texture
+Classification with Local Binary Patterns.
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence},
+24(7):971--987, 2002.
+
+\bibitem{lowe2004sift}
+D.~G. Lowe.
+\newblock Distinctive Image Features from Scale-Invariant Keypoints.
+\newblock \emph{International Journal of Computer Vision}, 60:91--110, 2004.
+
+\bibitem{tomasi1998bilateral}
+C.~Tomasi e R.~Manduchi.
+\newblock Bilateral Filtering for Gray and Color Images.
+\newblock In \emph{Proceedings of the Sixth International Conference on
+Computer Vision}, pages 839--846, 1998.
+
+\bibitem{lugaresi2019mediapipe}
+C.~Lugaresi et al.
+\newblock MediaPipe: A Framework for Building Perception Pipelines.
+\newblock \emph{arXiv preprint arXiv:1906.08172}, 2019.
+
+\bibitem{breiman2001rf}
+L.~Breiman.
+\newblock Random Forests.
+\newblock \emph{Machine Learning}, 45:5--32, 2001.
+
+\bibitem{chen2016xgboost}
+T.~Chen e C.~Guestrin.
+\newblock XGBoost: A Scalable Tree Boosting System.
+\newblock In \emph{Proceedings of the 22nd ACM SIGKDD International Conference
+on Knowledge Discovery and Data Mining}, pages 785--794, 2016.
+
+\end{thebibliography}
+
+\end{document}
